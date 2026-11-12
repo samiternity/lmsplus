@@ -1,0 +1,26 @@
+<html>
+<head><title>GPA Results</title>{% include "includes/analytics.html" %}</head>
+<body>
+    <h1>GPA Results</h1>
+    <p>Total Semesters: {{ gpa_stats.total_semesters }}</p>
+    <p>Total Courses: {{ gpa_stats.total_courses }}</p>
+    <p>Total Credit Hours: {{ gpa_stats.total_credit_hours }}</p>
+    <p>Current CGPA: {{ gpa_stats.current_cgpa }}</p>
+    <p>Highest SGPA: {{ gpa_stats.highest_sgpa }}</p>
+    <p>Lowest SGPA: {{ gpa_stats.lowest_sgpa }}</p>
+
+    <h2>Semester-wise Performance</h2>
+    <ul>
+    {% for semester in user_data.gpa.semesters %}
+        <li>{{ semester.semester_name }}: SGPA={{ semester.sgpa }}, CGPA={{ semester.cgpa }}</li>
+    {% endfor %}
+    </ul>
+
+    <h2>Current Semester Courses</h2>
+    <ul>
+    {% for course in user_data.gpa.current_semester_courses %}
+        <li>{{ course.code }} - {{ course.name }}: Grade={{ course.grade }}, Credit Hours={{ course.credit_hours }}</li>
+    {% endfor %}
+    </ul>
+</body>
+</html>

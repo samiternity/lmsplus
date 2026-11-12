@@ -1,0 +1,15 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "replace-with-your-cloud-run-service",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}

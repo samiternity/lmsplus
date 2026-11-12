@@ -1,0 +1,1329 @@
+{% extends "base.html" %}
+
+{% block title %}Lecture Notes - LMS Portal{% endblock %}
+
+{% block content %}
+
+
+<!-- Filters and Search -->
+<div class="card mb-6">
+    <div class="card-body">
+        <div class="filters-container">
+            <div class="filter-group">
+                <label for="semesterFilter" class="form-label">Semester</label>
+                <select id="semesterFilter" class="form-select">
+                    <option value="">All Semesters</option>
+                    {% for semester in available_semesters %}
+                    <option value="{{ semester.code }}" {{ 'selected' if semester.code == current_semester else '' }}>
+                        {{ semester.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="courseFilter" class="form-label">Course</label>
+                <select id="courseFilter" class="form-select">
+                    <option value="">All Courses</option>
+                    {% for course in available_courses %}
+                    <option value="{{ course.code }}" {{ 'selected' if course.code == current_course else '' }}>
+                        {{ course.name }} ({{ course.code }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="searchInput" class="form-label">Search</label>
+                <div class="search-input-container">
+                    <input type="text" id="searchInput" class="form-input" 
+                           placeholder="Search lecture notes..." value="{{ search_query or '' }}">
+                    <i class="fas fa-search search-icon"></i>
+                </div>
+            </div>
+            
+            <div class="filter-actions">
+                <button id="applyFilters" class="btn btn-primary">
+                    <i class="fas fa-filter"></i> Apply Filters
+                </button>
+                <button id="clearFilters" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Clear
+                </button>
+                <button id="refreshNotes" class="btn btn-secondary">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lecture Notes Statistics -->
+<div class="grid grid-cols-4 mb-6">
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="stat-icon notes">
+                <i class="fas fa-file-alt"></i>
+            </div>
+            <h3 class="stat-number">{{ stats.total_notes or 0 }}</h3>
+            <p class="stat-label">Total Notes</p>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="stat-icon courses">
+                <i class="fas fa-book"></i>
+            </div>
+            <h3 class="stat-number">{{ stats.total_courses or 0 }}</h3>
+            <p class="stat-label">Courses</p>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="stat-icon videos">
+                <i class="fas fa-video"></i>
+            </div>
+            <h3 class="stat-number">{{ stats.video_count or 0 }}</h3>
+            <p class="stat-label">Video Links</p>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="stat-icon recent">
+                <i class="fas fa-clock"></i>
+            </div>
+            <h3 class="stat-number">{{ stats.recent_count or 0 }}</h3>
+            <p class="stat-label">This Week</p>
+        </div>
+    </div>
+</div>
+
+<!-- Lecture Notes Content -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Lecture Notes</h3>
+        <div class="card-actions">
+            <div class="view-toggle">
+                <button id="listView" class="view-btn" data-view="list">
+                    <i class="fas fa-list"></i>
+                </button>
+                <button id="cardView" class="view-btn" data-view="card">
+                    <i class="fas fa-th-large"></i>
+                </button>
+                <button id="courseView" class="view-btn active" data-view="course">
+                    <i class="fas fa-layer-group"></i>
+                </button>
+            </div>
+            <div class="sort-options">
+                <select id="sortBy" class="form-select form-select-sm">
+                    <option value="week_desc">Week (Newest First)</option>
+                    <option value="week_asc">Week (Oldest First)</option>
+                    <option value="course">Course</option>
+                    <option value="title">Title</option>
+                    <option value="date_desc">Upload Date (Newest)</option>
+                    <option value="date_asc">Upload Date (Oldest)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if lecture_notes %}
+            <!-- Course-based View (Default) -->
+            <div id="lectureNotesCourse" class="lecture-notes-course-view">
+                <div class="lecture-notes-container">
+                    {% if notes_by_course %}
+                        {% for course_name, course_notes in notes_by_course.items() %}
+                        <div class="course-section">
+                            <div class="course-header" onclick="toggleCourseSection('{{ loop.index }}')">
+                                <div class="course-info">
+                                    <h3 class="course-title">{{ course_name }}</h3>
+                                    <span class="notes-count">{{ course_notes|length }} note{{ 's' if course_notes|length != 1 else '' }}</span>
+                                </div>
+                                <div class="course-toggle">
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="course-content" id="courseContent{{ loop.index }}">
+                                <div class="notes-list">
+                                    {% for note in course_notes %}
+                                    <div class="note-card">
+                                        <div class="note-header">
+                                            <div class="note-week">
+                                                <span class="week-badge">Week {{ note.week_no }}</span>
+                                            </div>
+                                            <div class="note-date">
+                                                {% if note.upload_date %}
+                                                <span class="upload-date">{{ note.upload_date.strftime('%b %d, %Y') }}</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="note-body">
+                                            <h4 class="note-title">{{ note.title }}</h4>
+                                            {% if note.remarks %}
+                                            <p class="note-description">{{ note.remarks }}</p>
+                                            {% endif %}
+                                            
+                                            <div class="note-materials">
+                                                {% if note.lecture_files %}
+                                                <div class="material-group">
+                                                    <h5 class="material-group-title">
+                                                        <i class="fas fa-file-alt"></i>
+                                                        Lecture Files ({{ note.lecture_files|length }})
+                                                    </h5>
+                                                    <div class="material-items">
+                                                        {% for file in note.lecture_files %}
+                                                        <div class="material-item">
+                                                            <div class="file-icon">
+                                                                {% set file_ext = file.split('.')[-1].lower() %}
+                                                                {% if file_ext == 'pdf' %}
+                                                                    <i class="fas fa-file-pdf" style="color: #dc3545;"></i>
+                                                                {% elif file_ext in ['ppt', 'pptx'] %}
+                                                                    <i class="fas fa-file-powerpoint" style="color: #fd7e14;"></i>
+                                                                {% elif file_ext in ['doc', 'docx'] %}
+                                                                    <i class="fas fa-file-word" style="color: #0d6efd;"></i>
+                                                                {% elif file_ext in ['xls', 'xlsx'] %}
+                                                                    <i class="fas fa-file-excel" style="color: #198754;"></i>
+                                                                {% elif file_ext in ['zip', 'rar', '7z'] %}
+                                                                    <i class="fas fa-file-archive" style="color: #6f42c1;"></i>
+                                                                {% elif file_ext in ['jpg', 'jpeg', 'png', 'gif'] %}
+                                                                    <i class="fas fa-file-image" style="color: #20c997;"></i>
+                                                                {% else %}
+                                                                    <i class="fas fa-file" style="color: var(--text-muted);"></i>
+                                                                {% endif %}
+                                                            </div>
+                                                            <div class="file-info">
+                                                                <span class="file-name">{{ file.split('/')[-1] }}</span>
+                                                                <span class="file-type">{{ file_ext.upper() }}</span>
+                                                            </div>
+                                                            <div class="file-actions">
+                                                                <a href="{{ url_for('lms.download_file', file_url=file) }}" 
+                                                                   class="btn btn-sm btn-primary" title="Download">
+                                                                    <i class="fas fa-download"></i>
+                                                                </a>
+                                                                {% if file_ext == 'pdf' %}
+                                                                <button class="btn btn-sm btn-secondary preview-btn" 
+                                                                        data-file-url="{{ file }}" title="Preview">
+                                                                    <i class="fas fa-eye"></i>
+                                                                </button>
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                                {% endif %}
+                                                
+                                                {% if note.video_links %}
+                                                <div class="material-group">
+                                                    <h5 class="material-group-title">
+                                                        <i class="fas fa-video"></i>
+                                                        Video Links ({{ note.video_links|length }})
+                                                    </h5>
+                                                    <div class="material-items">
+                                                        {% for video in note.video_links %}
+                                                        <div class="material-item">
+                                                            <div class="file-icon">
+                                                                <i class="fas fa-play-circle" style="color: #dc3545;"></i>
+                                                            </div>
+                                                            <div class="file-info">
+                                                                <span class="file-name">{{ video.split('/')[-1] }}</span>
+                                                                <span class="file-type">VIDEO</span>
+                                                            </div>
+                                                            <div class="file-actions">
+                                                                <a href="{{ video }}" target="_blank" 
+                                                                   class="btn btn-sm btn-warning" title="Watch">
+                                                                    <i class="fas fa-play"></i>
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                                {% endif %}
+                                                
+                                                {% if note.supplementary_links %}
+                                                <div class="material-group">
+                                                    <h5 class="material-group-title">
+                                                        <i class="fas fa-link"></i>
+                                                        Supplementary Links ({{ note.supplementary_links|length }})
+                                                    </h5>
+                                                    <div class="material-items">
+                                                        {% for link in note.supplementary_links %}
+                                                        <div class="material-item">
+                                                            <div class="file-icon">
+                                                                <i class="fas fa-external-link-alt" style="color: #198754;"></i>
+                                                            </div>
+                                                            <div class="file-info">
+                                                                <span class="file-name">{{ link.split('/')[-1] }}</span>
+                                                                <span class="file-type">LINK</span>
+                                                            </div>
+                                                            <div class="file-actions">
+                                                                <a href="{{ link }}" target="_blank" 
+                                                                   class="btn btn-sm btn-success" title="Open">
+                                                                    <i class="fas fa-external-link-alt"></i>
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="note-footer">
+                                            <button class="btn btn-sm btn-info details-btn" 
+                                                    data-note='{{ note | tojson }}' title="View Details">
+                                                <i class="fas fa-info-circle"></i> Details
+                                            </button>
+                                            {% if note.lecture_files or note.video_links or note.supplementary_links %}
+                                            <button class="btn btn-sm btn-primary download-all-btn" 
+                                                    data-note-id="{{ note.week_no }}"
+                                                    data-course="{{ note.course_code }}" title="Download All">
+                                                <i class="fas fa-download"></i> Download All
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- List View -->
+            <div id="lectureNotesList" class="lecture-notes-list-view" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table lecture-notes-table">
+                        <thead>
+                            <tr>
+                                <th>Week</th>
+                                <th>Title</th>
+                                <th>Course</th>
+                                <th>Materials</th>
+                                <th>Upload Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for note in lecture_notes %}
+                            <tr class="lecture-note-row">
+                                <td>
+                                    <div class="week-info">
+                                        <span class="week-number">Week {{ note.week_no }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="note-title-info">
+                                        <h4 class="note-title">{{ note.title }}</h4>
+                                        {% if note.remarks %}
+                                        <p class="note-description">{{ note.remarks[:100] }}{% if note.remarks|length > 100 %}...{% endif %}</p>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="course-info">
+                                        <span class="course-name">{{ note.course_name }}</span>
+                                        <span class="course-code">{{ note.course_code }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="materials-info">
+                                        {% if note.lecture_files %}
+                                        <span class="material-count files">
+                                            <i class="fas fa-file"></i> {{ note.lecture_files|length }}
+                                        </span>
+                                        {% endif %}
+                                        {% if note.video_links %}
+                                        <span class="material-count videos">
+                                            <i class="fas fa-video"></i> {{ note.video_links|length }}
+                                        </span>
+                                        {% endif %}
+                                        {% if note.supplementary_links %}
+                                        <span class="material-count links">
+                                            <i class="fas fa-link"></i> {{ note.supplementary_links|length }}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="upload-date">
+                                        {% if note.upload_date %}
+                                        <span class="date">{{ note.upload_date.strftime('%b %d, %Y') }}</span>
+                                        <span class="time">{{ note.upload_date.strftime('%I:%M %p') }}</span>
+                                        {% else %}
+                                        <span class="no-date">Unknown</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="note-actions">
+                                        <button class="btn btn-info btn-sm details-btn" 
+                                                data-note='{{ note | tojson }}'
+                                                title="View Details">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                        {% if note.lecture_files or note.video_links or note.supplementary_links %}
+                                        <button class="btn btn-primary btn-sm download-all-btn" 
+                                                data-note-id="{{ note.week_no }}"
+                                                data-course="{{ note.course_code }}"
+                                                title="Download All">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Card View -->
+            <div id="lectureNotesCards" class="lecture-notes-card-view" style="display: none;">
+                <div class="lecture-notes-grid">
+                    {% for note in lecture_notes %}
+                    <div class="lecture-note-card">
+                        <div class="note-card-header">
+                            <div class="week-badge">Week {{ note.week_no }}</div>
+                            <div class="course-badge">{{ note.course_code }}</div>
+                        </div>
+                        
+                        <div class="note-card-body">
+                            <h4 class="note-card-title">{{ note.title }}</h4>
+                            <p class="note-course">{{ note.course_name }}</p>
+                            
+                            {% if note.remarks %}
+                            <div class="note-description">
+                                <p>{{ note.remarks }}</p>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="materials-summary">
+                                {% if note.lecture_files %}
+                                <div class="material-item">
+                                    <i class="fas fa-file-alt"></i>
+                                    <span>{{ note.lecture_files|length }} File{{ 's' if note.lecture_files|length != 1 else '' }}</span>
+                                </div>
+                                {% endif %}
+                                
+                                {% if note.video_links %}
+                                <div class="material-item">
+                                    <i class="fas fa-video"></i>
+                                    <span>{{ note.video_links|length }} Video{{ 's' if note.video_links|length != 1 else '' }}</span>
+                                </div>
+                                {% endif %}
+                                
+                                {% if note.supplementary_links %}
+                                <div class="material-item">
+                                    <i class="fas fa-link"></i>
+                                    <span>{{ note.supplementary_links|length }} Link{{ 's' if note.supplementary_links|length != 1 else '' }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            {% if note.upload_date %}
+                            <div class="upload-info">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span>{{ note.upload_date.strftime('%b %d, %Y') }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="note-card-footer">
+                            <button class="btn btn-secondary btn-sm details-btn" 
+                                    data-note='{{ note | tojson }}'>
+                                <i class="fas fa-eye"></i> View Details
+                            </button>
+                            {% if note.lecture_files or note.video_links or note.supplementary_links %}
+                            <button class="btn btn-primary btn-sm download-all-btn" 
+                                    data-note-id="{{ note.week_no }}"
+                                    data-course="{{ note.course_code }}">
+                                <i class="fas fa-download"></i> Download All
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <i class="fas fa-book-open"></i>
+                </div>
+                <h3>No Lecture Notes Found</h3>
+                <p>No lecture notes match your current filters. Try adjusting your search criteria or refresh the data.</p>
+                <button onclick="refreshLectureNotes()" class="btn btn-primary">
+                    <i class="fas fa-sync-alt"></i> Refresh Lecture Notes
+                </button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Lecture Note Details Modal -->
+<div id="noteDetailsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3>Lecture Note Details</h3>
+            <button class="modal-close" onclick="closeNoteDetailsModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="noteDetailsContent">
+            <!-- Details will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<!-- Download Progress Modal -->
+<div id="downloadProgressModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Downloading Files</h3>
+        </div>
+        <div class="modal-body">
+            <div class="download-progress">
+                <div class="progress-info">
+                    <span id="downloadStatus">Preparing download...</span>
+                </div>
+                <div class="progress">
+                    <div id="downloadProgressBar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="download-details">
+                    <span id="downloadedCount">0</span> of <span id="totalCount">0</span> files
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="cancelDownload" class="btn btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- File Preview Modal (dynamically created) -->
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Lecture Notes Specific Styles */
+.search-input-container {
+    position: relative;
+}
+
+.search-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.stat-icon.notes {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--info-color);
+}
+
+.stat-icon.courses {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--success-color);
+}
+
+.stat-icon.videos {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--warning-color);
+}
+
+.stat-icon.recent {
+    background-color: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.sort-options .form-select-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.week-info {
+    display: flex;
+    align-items: center;
+}
+
+.week-number {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.note-title-info h4 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.note-description {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.materials-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.material-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.material-count.files {
+    color: var(--info-color);
+}
+
+.material-count.videos {
+    color: var(--warning-color);
+}
+
+.material-count.links {
+    color: var(--success-color);
+}
+
+.upload-date {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.upload-date .date {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.upload-date .time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.no-date {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.note-actions {
+    display: flex;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+}
+
+/* Course-based View Styles */
+.lecture-notes-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.course-section {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+}
+
+.course-header {
+    background-color: var(--bg-primary);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: var(--transition);
+}
+
+.course-header:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.course-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.course-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.notes-count {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.course-toggle {
+    color: var(--text-muted);
+    transition: var(--transition);
+}
+
+.course-toggle.expanded {
+    transform: rotate(180deg);
+}
+
+.course-content {
+    padding: 1.5rem;
+    display: block;
+}
+
+.course-content.collapsed {
+    display: none;
+}
+
+.notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.note-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.note-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.note-header {
+    padding: 1rem;
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.note-week .week-badge {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.upload-date {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.note-body {
+    padding: 1rem;
+}
+
+.note-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.note-description {
+    margin: 0 0 1rem 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.note-materials {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.material-group {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.material-group-title {
+    background-color: var(--bg-tertiary);
+    padding: 0.75rem 1rem;
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.material-items {
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.material-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background-color: var(--bg-primary);
+    border-radius: var(--border-radius);
+    transition: var(--transition);
+}
+
+.material-item:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.file-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.file-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-type {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.file-actions {
+    display: flex;
+    gap: 0.375rem;
+    flex-shrink: 0;
+}
+
+.note-footer {
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Card View Styles */
+.lecture-notes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.lecture-note-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.lecture-note-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px var(--shadow-color);
+    transform: translateY(-2px);
+}
+
+.note-card-header {
+    padding: 1rem;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.week-badge {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.course-badge {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.note-card-body {
+    padding: 1rem;
+}
+
+.note-card-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.note-course {
+    margin: 0 0 1rem 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.note-description {
+    background-color: var(--bg-tertiary);
+    padding: 0.75rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+}
+
+.note-description p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.materials-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.material-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.material-item i {
+    color: var(--primary-color);
+}
+
+.upload-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.note-card-footer {
+    padding: 1rem;
+    background-color: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Modal Styles */
+.modal-large {
+    max-width: 900px;
+}
+
+.note-details {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.detail-section {
+    background-color: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+}
+
+.detail-section h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.5rem;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.detail-item label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.detail-item span {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.materials-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.material-group {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.material-group-header {
+    background-color: var(--bg-tertiary);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.material-group-content {
+    padding: 1rem;
+}
+
+.material-links {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.material-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    transition: var(--transition);
+}
+
+.material-link:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.material-link-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.material-link-icon {
+    width: 32px;
+    height: 32px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.material-link-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.material-link-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.material-link-type {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.material-link-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Download Progress Styles */
+.download-progress {
+    text-align: center;
+}
+
+.progress-info {
+    margin-bottom: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.progress {
+    margin-bottom: 1rem;
+}
+
+.download-details {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .filters-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-actions {
+        justify-content: stretch;
+    }
+    
+    .filter-actions .btn {
+        flex: 1;
+    }
+    
+    .lecture-notes-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .note-actions {
+        flex-direction: column;
+    }
+    
+    .note-actions .btn {
+        width: 100%;
+    }
+    
+    .note-card-footer {
+        flex-direction: column;
+    }
+    
+    .note-card-footer .btn {
+        width: 100%;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
+    }
+    
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Course-based view responsive */
+    .course-header {
+        padding: 0.75rem 1rem;
+    }
+    
+    .course-title {
+        font-size: 1rem;
+    }
+    
+    .course-content {
+        padding: 1rem;
+    }
+    
+    .note-header {
+        padding: 0.75rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .note-body {
+        padding: 0.75rem;
+    }
+    
+    .material-item {
+        padding: 0.5rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .file-info {
+        width: 100%;
+    }
+    
+    .file-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .note-footer {
+        padding: 0.75rem;
+        flex-direction: column;
+    }
+    
+    .note-footer .btn {
+        width: 100%;
+    }
+}
+
+/* Preview Modal Styles */
+.preview-container {
+    width: 100%;
+    height: 600px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.preview-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* File Type Icon Enhancements */
+.file-icon i.fa-file-pdf {
+    color: #dc3545 !important;
+}
+
+.file-icon i.fa-file-powerpoint {
+    color: #fd7e14 !important;
+}
+
+.file-icon i.fa-file-word {
+    color: #0d6efd !important;
+}
+
+.file-icon i.fa-file-excel {
+    color: #198754 !important;
+}
+
+.file-icon i.fa-file-archive {
+    color: #6f42c1 !important;
+}
+
+.file-icon i.fa-file-image {
+    color: #20c997 !important;
+}
+
+.file-icon i.fa-play-circle {
+    color: #dc3545 !important;
+}
+
+.file-icon i.fa-external-link-alt {
+    color: #198754 !important;
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- LMS Lecture Notes JavaScript -->
+<script src="{{ url_for('static', filename='js/lms_lecture_notes.js') }}"></script>
+{% endblock %}

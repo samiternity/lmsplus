@@ -1,0 +1,1022 @@
+{% extends "base.html" %}
+
+{% block title %}Assignments - LMS Portal{% endblock %}
+
+{% block header_actions %}
+<div id="courseRefreshActions" class="refresh-data-widget" style="display: none; margin-right: 1rem;">
+    <button type="button" id="refreshAssignments" class="refresh-data-toggle" title="Refresh assignments" aria-label="Refresh assignments">
+        <i class="fas fa-sync-alt refresh-icon" aria-hidden="true"></i>
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+
+
+<!-- Unified Loading State -->
+<div id="initialLoadingState" class="unified-loading-container" {% if not load_via_ajax %}style="display: none;" {%
+    endif %}>
+    <div class="unified-loading-card">
+        <div class="unified-loading-icon">
+            <i class="fas fa-layer-group"></i>
+        </div>
+        <h3 class="unified-loading-title">Loading Assignments</h3>
+        <p id="loadingStatusText" class="unified-loading-status">Connecting to LMS...</p>
+
+        <div class="unified-progress-bar-wrap">
+            <div class="unified-progress-bar" id="unifiedProgressBar" style="width: 0%"></div>
+        </div>
+
+        <div class="unified-steps" id="unifiedSteps">
+            <div class="unified-step" id="step-connect">
+                <span class="step-dot"></span>
+                <span class="step-label">Connecting to LMS</span>
+            </div>
+            <div class="unified-step" id="step-courses">
+                <span class="step-dot"></span>
+                <span class="step-label">Fetching semesters</span>
+            </div>
+            <div class="unified-step" id="step-assignments">
+                <span class="step-dot"></span>
+                <span class="step-label">Loading assignments</span>
+            </div>
+            <div class="unified-step" id="step-done">
+                <span class="step-dot"></span>
+                <span class="step-label">Finalizing</span>
+            </div>
+        </div>
+
+        <p id="loadingAttemptText" class="unified-loading-attempt"></p>
+    </div>
+</div>
+
+<!-- Main Content (hidden until data loads) -->
+<div id="mainContent" {% if load_via_ajax %}style="display: none;" {% endif %}>
+    <!-- Course Selection Bar -->
+    <div class="course-selection-bar animate-fade-in-up mb-4">
+        <div class="selection-item">
+            <label for="semesterSelect" class="selection-label">
+                Semester
+            </label>
+            <select id="semesterSelect" class="selection-dropdown">
+                <option value="">Loading semesters...</option>
+            </select>
+        </div>
+
+        <div class="selection-item">
+            <label for="courseSelect" class="selection-label">
+                Course
+            </label>
+            <select id="courseSelect" class="selection-dropdown">
+                <option value="" disabled hidden selected>Select a course...</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Loading Overlay (shown when loading course assignments) -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <div class="loading-text-wrapper">
+                <div class="loading-text-scroller">
+                    <span class="loading-text">Connecting securely...</span>
+                    <span class="loading-text">Fetching course data...</span>
+                    <span class="loading-text">Organizing content...</span>
+                    <span class="loading-text">Almost ready...</span>
+                    <span class="loading-text">Connecting securely...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Assignments Table -->
+    <div id="assignmentsContainer" class="mt-6" style="display: none; margin-top: 1.5rem !important;">
+        <div class="card">
+            <div class="card-header d-flex justify-content-end align-items-center">
+                <div class="card-actions d-flex gap-2 align-items-center">
+
+                    {% if not config.get('IS_PRODUCTION', False) %}
+                    <button id="viewGroupInvites" class="btn btn-sm btn-soft-primary d-flex align-items-center gap-2 px-3" onclick="window.showGroupInvitesModal()">
+                        <i class="fas fa-envelope-open-text"></i> <span>Group Invites</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 text-center align-middle">
+                        <thead class="table-light text-center">
+                            <tr>
+                                <th width="3%" class="px-4 py-3 text-center">No.</th>
+                                <th width="20%" class="px-4 py-3 text-start">Title</th>
+                                <th width="22%" class="px-4 py-3 text-start" id="col-remarks" style="display: none;">Remarks</th>
+                                <th width="15%" class="px-4 py-3 text-center">Assignment files</th>
+                                <th width="15%" class="px-4 py-3 text-center">Your Submission</th>
+                                <th width="10%" class="px-4 py-3 text-center" id="col-marks">Marks Obtained</th>
+                                <th width="15%" class="px-4 py-3 text-center" id="col-feedback">Feedback</th>
+                                <th width="10%" class="px-4 py-3 text-center">Action</th>
+                                <th width="10%" class="px-4 py-3 text-center">Deadline</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assignmentsTableBody" class="text-center align-middle">
+                            <!-- Assignments will be inserted here via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state-container" style="display: none;">
+        <div class="empty-state-content">
+            <div class="empty-state-icon">
+                <i class="fas fa-book-open"></i>
+            </div>
+            <h3 class="empty-state-title">No Course Selected</h3>
+            <p class="empty-state-message">Select a course from the dropdown above to view your assignments</p>
+        </div>
+    </div>
+
+    <!-- Error State (for AJAX errors) -->
+    <div id="errorState" class="error-state-container" style="display: none;">
+        <div class="error-state-card">
+            <div class="error-state-icon">
+                <i class="fas fa-server"></i>
+            </div>
+            <h3 class="error-state-title">Unable to Connect</h3>
+            <p id="errorMessage" class="error-state-message">The LMS server is currently unreachable.</p>
+            <div class="error-state-actions">
+                <button id="retryButton" class="btn btn-primary" onclick="location.reload()">
+                    <i class="fas fa-redo"></i> Retry
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Error State (shown if initial connection fails) -->
+<div id="connectionErrorState" class="error-state-container" style="display: none;">
+    <div class="error-state-card">
+        <div class="error-state-icon">
+            <i class="fas fa-server"></i>
+        </div>
+        <h3 class="error-state-title">Unable to Connect</h3>
+        <p id="connectionErrorMessage" class="error-state-message">The LMS server is currently unreachable.</p>
+        <div class="error-state-actions">
+            <button class="btn btn-primary" onclick="location.reload()">
+                <i class="fas fa-redo"></i> Retry
+            </button>
+        </div>
+    </div>
+    <!-- Floating Notification Toast Container -->
+    <div id="notificationBanner" class="notification-banner" style="display: none;"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<!-- TomSelect for premium combo boxes -->
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+<style>
+    /* TomSelect Premium Overrides */
+    .ts-control {
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-color);
+        background-color: rgba(15, 23, 42, 0.6) !important;
+        color: #f8fafc !important;
+        padding: 0.625rem 2.5rem 0.625rem 0.875rem !important;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(8px);
+        transition: all 0.2s;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+          cursor: pointer !important;
+    }
+    .ts-control.focus {
+        border-color: rgba(59, 130, 246, 0.4) !important;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    }
+    .ts-dropdown {
+        background-color: rgba(30, 41, 59, 0.95);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        backdrop-filter: blur(12px);
+        color: #f8fafc;
+        margin-top: 4px;
+        z-index: 1060 !important;
+    }
+    .ts-dropdown .option {
+        padding: 10px 16px;
+        transition: background 0.1s;
+    }
+    .ts-dropdown .option.active, 
+    .ts-dropdown .option:hover {
+        background-color: rgba(59, 130, 246, 0.2) !important;
+        color: #fff;
+    }
+    .course-selection-bar .ts-wrapper.single .ts-control::after {
+        content: '';
+        display: block;
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        margin: -5px 0 0;
+        border: solid var(--text-secondary, #94a3b8);
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg);
+        pointer-events: none;
+    }
+    .course-selection-bar .ts-wrapper.single.dropdown-active .ts-control::after {
+        margin-top: -1px;
+        transform: rotate(225deg);
+    }
+    .course-selection-bar .ts-control > .item {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.4;
+        font-size: 0.875rem;
+    }
+    .course-selection-bar .ts-wrapper.focus .ts-control {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+    .ts-control > input {
+          color: #f8fafc !important;
+          cursor: pointer !important;
+      }
+
+    /* Fix nested box issue caused by TomSelect copying classes */
+    .ts-wrapper.selection-dropdown {
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        min-height: 0 !important;
+    }
+    /* Unified Loading State Styles */
+    .unified-loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 4rem 1rem;
+        min-height: 400px;
+        animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    .unified-loading-card {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        padding: 3rem 2.5rem;
+        max-width: 420px;
+        width: 100%;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .unified-loading-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+    }
+
+    .unified-loading-icon {
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.2), inset 0 0 12px rgba(59, 130, 246, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: #60a5fa;
+        margin: 0 auto 1.5rem;
+        animation: pulse-icon 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-icon {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+    }
+
+    .unified-loading-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.375rem;
+    }
+
+    .unified-loading-status {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin: 0 0 1.25rem;
+        min-height: 1.25rem;
+        transition: opacity 0.3s;
+    }
+
+    .unified-progress-bar-wrap {
+        background: var(--bg-tertiary);
+        border-radius: 999px;
+        height: 6px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
+
+    .unified-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+        border-radius: 999px;
+        transition: width 0.5s ease;
+    }
+
+    .unified-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        text-align: left;
+        margin-bottom: 1rem;
+    }
+
+    .unified-step {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        transition: color 0.3s;
+    }
+
+    .unified-step.active { color: var(--primary-color); font-weight: 500; }
+    .unified-step.done { color: var(--success-color); }
+
+    .step-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        flex-shrink: 0;
+        transition: background 0.3s, border-color 0.3s;
+    }
+
+    .unified-step.active .step-dot {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        animation: dot-pulse 1s ease-in-out infinite;
+    }
+
+    .unified-step.done .step-dot {
+        background: var(--success-color);
+        border-color: var(--success-color);
+    }
+
+    @keyframes dot-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.4); }
+    }
+
+    .unified-loading-attempt {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin: 0;
+        min-height: 1rem;
+    }
+
+    /* Course-level loading overlay - Impeccable SaaS Redesign */
+    .loading-overlay {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 4rem 2rem;
+        animation: overlayReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+    }
+
+    @keyframes overlayReveal {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .loading-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 2.5rem 3.5rem;
+        box-shadow: 0 16px 40px var(--shadow-color);
+        position: relative;
+        overflow: hidden;
+        animation: cardHover 4s ease-in-out infinite;
+    }
+
+    /* Ambient shimmer matching the theme */
+    .loading-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: -150%; width: 50%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+        transform: skewX(-20deg);
+        animation: cardShimmer 3s infinite;
+    }
+
+    @keyframes cardHover {
+        0%, 100% { transform: translateY(0); box-shadow: 0 12px 32px var(--shadow-color); }
+        50% { transform: translateY(-4px); box-shadow: 0 20px 48px var(--shadow-color); }
+    }
+
+    @keyframes cardShimmer {
+        0% { left: -150%; }
+        100% { left: 250%; }
+    }
+
+    /* Sleek, enterprise geometric spinner */
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: conic-gradient(from 90deg, transparent 0%, transparent 40%, var(--primary-color) 80%, var(--primary-hover) 100%);
+        -webkit-mask-image: radial-gradient(farthest-side, transparent calc(100% - 4px), black calc(100% - 3px));
+        mask-image: radial-gradient(farthest-side, transparent calc(100% - 4px), black calc(100% - 3px));
+        animation: spin 1s linear infinite;
+        flex-shrink: 0;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .loading-text-wrapper {
+        height: 20px;
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .loading-text-scroller {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: textScrollSlot 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .loading-text {
+        height: 20px;
+        line-height: 20px;
+        color: var(--text-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 0;
+        white-space: nowrap;
+        text-align: center;
+    }
+
+    @keyframes textScrollSlot {
+        0%, 20%   { transform: translateY(0); }
+        25%, 45%  { transform: translateY(-20px); }
+        50%, 70%  { transform: translateY(-40px); }
+        75%, 95%  { transform: translateY(-60px); }
+        100%      { transform: translateY(-80px); }
+    }
+
+    /* Error State Styles */
+    .error-state-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 3rem 1rem;
+        min-height: 300px;
+    }
+
+    .error-state-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-lg);
+        box-shadow: 0 4px 20px var(--shadow-color);
+        padding: 2.5rem;
+        max-width: 400px;
+        width: 100%;
+        text-align: center;
+    }
+
+    .error-state-icon {
+        width: 64px;
+        height: 64px;
+        background-color: rgba(239, 68, 68, 0.1);
+        color: var(--error-color);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.75rem;
+        margin: 0 auto 1.5rem;
+    }
+
+    .error-state-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.75rem;
+    }
+
+    .error-state-message {
+        font-size: 0.9375rem;
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+        line-height: 1.5;
+    }
+
+    .error-state-actions {
+        display: flex;
+        justify-content: center;
+        gap: 0.75rem;
+    }
+
+    /* Lecture Notes toolbar */
+    .ln-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .ln-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .ln-toolbar-title {
+        margin: 0;
+    }
+
+    .ln-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.9rem;
+        border-radius: var(--border-radius);
+        border: 1px solid transparent;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.18s, box-shadow 0.18s, transform 0.15s, border-color 0.18s;
+        white-space: nowrap;
+        line-height: 1;
+        letter-spacing: 0.01em;
+    }
+
+    .ln-action-btn:active {
+        transform: scale(0.96);
+    }
+
+    .ln-btn-download {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+    }
+
+    .ln-btn-download:hover {
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+        filter: brightness(1.08);
+    }
+
+    .ln-btn-refresh {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border-color: var(--border-color);
+    }
+
+    .ln-btn-refresh:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border-color: var(--text-muted);
+    }
+
+    [data-theme="dark"] .ln-btn-refresh {
+        background: #1e293b;
+        border-color: #334155;
+        color: #94a3b8;
+    }
+
+    [data-theme="dark"] .ln-btn-refresh:hover {
+        background: #334155;
+        color: #f1f5f9;
+        border-color: #475569;
+    }
+
+    /* Spin animation for refresh button when loading */
+    .ln-btn-refresh.spinning svg {
+        animation: ln-spin 0.7s linear infinite;
+    }
+
+    @keyframes ln-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Sticky first column for horizontal scrolling */
+    #assignmentsContainer .assignment-action-cell {
+        min-width: 116px;
+    }
+
+    #assignmentsContainer .assignment-submit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        min-width: 92px;
+        min-height: 44px;
+        padding: 0.625rem 0.875rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: #198754;
+        color: #fff;
+        font: inherit;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.25;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    @media (hover: hover) {
+        #assignmentsContainer .assignment-submit-btn:hover {
+            background: #157347;
+        }
+    }
+
+    #assignmentsContainer .assignment-submit-btn:focus-visible {
+        outline: 2px solid var(--text-primary);
+        outline-offset: 3px;
+    }
+
+    #assignmentsContainer .card-body {
+        padding: 0;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #assignmentsContainer .assignment-remarks-cell {
+        min-width: 180px;
+        max-width: 320px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font-style: italic;
+        color: var(--text-secondary);
+        line-height: 1.45;
+    }
+    
+    @media (max-width: 768px) {
+        #assignmentsContainer .table-responsive table {
+            white-space: nowrap;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        #assignmentsContainer .table-responsive th:first-child,
+        #assignmentsContainer .table-responsive td:first-child {
+            position: -webkit-sticky;
+            position: sticky;
+            left: 0;
+            background-color: var(--bg-primary) !important;
+            z-index: 10;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.08);
+            border-right: 2px solid var(--primary-color) !important;
+        }
+
+        #assignmentsContainer .table-responsive th:first-child::before,
+        #assignmentsContainer .table-responsive td:first-child::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: 100%;
+            width: 16px;
+            background: var(--bg-primary);
+        }
+        
+        #assignmentsContainer .table-responsive th:first-child {
+            z-index: 11;
+        }
+    }
+
+    /* Refined Download Buttons - Adding back subtle color to prevent dullness */
+    .subtle-download-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-primary);
+        white-space: nowrap;
+    }
+
+    /* Primary Accent (Assignment/Solution) */
+    .btn-soft-primary {
+        background: rgba(59, 130, 246, 0.08);
+        border-color: rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+    }
+    .btn-soft-primary:hover {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.3);
+        color: #93c5fd;
+        transform: translateY(-1px);
+    }
+    .btn-soft-primary i { color: #3b82f6; }
+
+    /* Secondary Accent (Submission/Video) */
+    .btn-soft-secondary {
+        background: rgba(148, 163, 184, 0.08);
+        border-color: rgba(148, 163, 184, 0.2);
+        color: #94a3b8;
+    }
+    .btn-soft-secondary:hover {
+        background: rgba(148, 163, 184, 0.15);
+        border-color: rgba(148, 163, 184, 0.3);
+        color: #cbd5e1;
+        transform: translateY(-1px);
+    }
+    .btn-soft-secondary i { color: #64748b; }
+
+    /* Warning Accent (Returned/Link) */
+    .btn-soft-warning {
+        background: rgba(245, 158, 11, 0.08);
+        border-color: rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+    }
+    .btn-soft-warning:hover {
+        background: rgba(245, 158, 11, 0.15);
+        border-color: rgba(245, 158, 11, 0.3);
+        color: #fcd34d;
+        transform: translateY(-1px);
+    }
+    .btn-soft-warning i { color: #f59e0b; }
+
+    /* Modern Table Header */
+    .table thead th {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-bottom: 1px solid var(--border-color);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    /* Card Accent */
+    #lectureNotesContainer .card {
+        border-top: 3px solid var(--primary-color);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Impeccable Animations */
+    @keyframes fadeInUp {
+        0% { opacity: 0; transform: translateY(12px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes fadeInScale {
+        0% { opacity: 0; transform: scale(0.99); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+
+    .animate-fade-in-up {
+        animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+    }
+    
+    .animate-fade-in-scale {
+        animation: fadeInScale 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+    }
+
+    /* Staggered Row Animation */
+    tr.animate-row {
+        opacity: 0;
+        animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        animation-delay: calc(var(--row-idx) * 40ms);
+    }
+    
+    /* Button Hover Enhancements */
+    .btn-soft-primary, .btn-soft-secondary, .btn-soft-warning, .btn-outline-secondary, .btn-primary {
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    
+    .table .btn-soft-primary:hover, 
+    .table .btn-soft-secondary:hover, 
+    .table .btn-soft-warning:hover,
+    .btn-outline-secondary:hover,
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        filter: brightness(1.05);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const GROUPS_ENABLED = {{ 'false' if config.get('IS_PRODUCTION', False) else 'true' }};
+    const IS_PRODUCTION = {{ 'true' if config.get('IS_PRODUCTION', False) else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='js/lms_assignments_new.js') }}?v=2"></script>
+<script>
+    let currentAttempt = 1;
+    const maxAttempts = 3;
+    const attemptDelay = 3000;
+
+    const STEPS = [
+        ['step-connect', 15, 'Connecting to LMS...'],
+        ['step-courses', 45, 'Fetching semesters...'],
+        ['step-assignments', 75, 'Loading assignments...'],
+        ['step-done', 100, 'Finalizing...'],
+    ];
+
+    let _progressTimer = null;
+    let _simulatedProgress = 0;
+
+    function startSimulatedProgress() {
+        _simulatedProgress = 0;
+        const bar = document.getElementById('unifiedProgressBar');
+        _progressTimer = setInterval(() => {
+            const remaining = 40 - _simulatedProgress;
+            const increment = remaining * 0.06;
+            _simulatedProgress += increment;
+            if (bar) bar.style.width = Math.min(_simulatedProgress, 40) + '%';
+        }, 300);
+    }
+
+    function stopSimulatedProgress() {
+        if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+    }
+
+    function setStep(index) {
+        stopSimulatedProgress();
+        const [stepId, pct, status] = STEPS[index];
+        document.getElementById('loadingStatusText').textContent = status;
+        document.getElementById('unifiedProgressBar').style.width = pct + '%';
+        STEPS.forEach(([id], i) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('active', 'done');
+            if (i < index) el.classList.add('done');
+            else if (i === index) el.classList.add('active');
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        {% if load_via_ajax %}
+        // Start step 1 with simulated progress
+        STEPS.forEach(([id]) => { const el = document.getElementById(id); if (el) el.classList.remove('active', 'done'); });
+        const firstStep = document.getElementById('step-connect');
+        if (firstStep) firstStep.classList.add('active');
+        document.getElementById('loadingStatusText').textContent = STEPS[0][2];
+        document.getElementById('unifiedProgressBar').style.width = '0%';
+        startSimulatedProgress();
+        loadSemesterOptions();
+        {% endif %}
+    });
+
+    function updateLoadingStatus(attempt, status) {
+        const attemptText = document.getElementById('loadingAttemptText');
+        if (attemptText) attemptText.textContent = attempt > 1 ? `Retry ${attempt - 1} of ${maxAttempts - 1}` : '';
+        document.getElementById('loadingStatusText').textContent = status;
+    }
+
+    function loadSemesterOptions() {
+        const semesterSelect = document.getElementById('semesterSelect');
+
+        fetch('/lms/api/assignments/options')
+            .then(response => {
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+                setStep(1); // fetching semesters
+                return response.json();
+            })
+            .then(data => {
+                if (data.success && data.semesters && data.semesters.length > 0) {
+                    setStep(2); // loading assignments
+                    semesterSelect.innerHTML = '';
+                    data.semesters.forEach((semester, index) => {
+                        const option = document.createElement('option');
+                        option.value = semester.code;
+                        option.textContent = semester.name;
+                        if (index === 0) option.selected = true;
+                        semesterSelect.appendChild(option);
+                    });
+
+                    setStep(3); // finalizing
+                    setTimeout(() => {
+                        document.getElementById('initialLoadingState').style.display = 'none';
+                        document.getElementById('mainContent').style.display = 'block';
+                        
+                        // Sync semester TomSelect if it exists
+                        if (semesterSelect && semesterSelect.tomselect) {
+                            semesterSelect.tomselect.sync();
+                        }
+
+                        const courseSelect = document.getElementById('courseSelect');
+                        if (data.courses && data.courses.length > 0 && courseSelect) {
+                            courseSelect.innerHTML = '<option value="" disabled hidden selected>Select a course...</option>';
+                            data.courses.forEach((course) => {
+                                const option = document.createElement('option');
+                                option.value = course.code;
+                                option.textContent = course.name;
+                                courseSelect.appendChild(option);
+                            });
+                            
+                            // Sync course TomSelect if it exists
+                            if (courseSelect && courseSelect.tomselect) {
+                                courseSelect.tomselect.sync();
+                                courseSelect.tomselect.setValue('');
+                            }
+                            
+                            if (courseSelect.options.length > 1) {
+                                // Do not auto-select the first course, leave it at 'Select a course...'
+                                // Just remove the loading state
+                            }
+                        } else if (semesterSelect.value) {
+                            semesterSelect.dispatchEvent(new Event('change'));
+                        }
+                    }, 400);
+                } else {
+                    stopSimulatedProgress();
+                    if (data.survey_required || data.error === 'CMS_SURVEY_REQUIRED') {
+                        document.getElementById('initialLoadingState').style.display = 'none';
+                        if (window.showSurveyModal) {
+                            window.showSurveyModal();
+                        } else {
+                            const overlay = document.getElementById('surveyModalOverlay');
+                            if (overlay) {
+                                overlay.style.display = 'flex';
+                                document.body.style.overflow = 'hidden';
+                            }
+                        }
+                        return;
+                    }
+                    handleRetryOrError(data.error || 'Unable to connect to LMS');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading semesters:', error);
+                stopSimulatedProgress();
+                handleRetryOrError('Connection failed');
+            });
+    }
+
+    function handleRetryOrError(errorMessage) {
+        if (currentAttempt < maxAttempts) {
+            currentAttempt++;
+            updateLoadingStatus(currentAttempt, 'Retrying connection...');
+            // Reset to step 1 with simulated progress
+            STEPS.forEach(([id]) => { const el = document.getElementById(id); if (el) el.classList.remove('active', 'done'); });
+            const firstStep = document.getElementById('step-connect');
+            if (firstStep) firstStep.classList.add('active');
+            document.getElementById('unifiedProgressBar').style.width = '0%';
+            startSimulatedProgress();
+            setTimeout(loadSemesterOptions, attemptDelay);
+        } else {
+            document.getElementById('initialLoadingState').style.display = 'none';
+            const err = document.getElementById('connectionErrorState');
+            if (err) {
+                document.getElementById('connectionErrorMessage').textContent =
+                    'The LMS server is currently unreachable after ' + maxAttempts + ' attempts.';
+                err.style.display = 'flex';
+            }
+        }
+    }
+</script>
+{% endblock %}

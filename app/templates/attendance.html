@@ -1,0 +1,2140 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance | LMS+{% endblock %}
+
+{% block header_actions %}
+<button class="policy-header-btn" id="policyHeaderBtn" onclick="openPolicyModal()" title="View Bahria University Attendance Regulations" aria-label="View Bahria University Attendance Regulations">
+    <i class="fas fa-info-circle policy-header-icon"></i>
+    <span class="policy-header-label">Policy</span>
+</button>
+<div class="attendance-age-indicator" id="attendanceAgeIndicator" style="display: flex; align-items: center; margin-right: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 0.35rem 0.75rem; border-radius: 2rem; border: 1px solid var(--border-color); white-space: nowrap; font-weight: 500;">
+    <i class="far fa-clock" id="attendanceAgeIcon" style="margin-right: 0.4rem; opacity: 0.7;"></i>
+    <span id="attendanceAgeText">{% if attendance and attendance.last_updated %}Refreshed recently{% else %}Ready{% endif %}</span>
+</div>
+<div class="refresh-data-widget" style="margin-right: 1rem;">
+    <button class="refresh-data-toggle" onclick="refreshAttendance()" id="refreshDataToggle" title="Refresh Attendance Data" aria-label="Refresh Attendance Data">
+        <i class="fas fa-sync-alt refresh-icon"></i>
+    </button>
+</div>
+<style>
+.refresh-data-toggle {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s ease, opacity 0.2s ease;
+    position: relative;
+    user-select: none;
+}
+
+.refresh-data-toggle:hover:not(.is-refreshing):not(:disabled) {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08)) !important;
+    transform: none !important;
+}
+
+.refresh-data-toggle .refresh-icon {
+    font-size: 1.1rem;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+    display: inline-block;
+    transform-origin: center center;
+}
+
+/* Rotate ONLY the icon on hover when idle - never rotate container */
+.refresh-data-toggle:hover:not(.is-refreshing):not(:disabled) .refresh-icon {
+    transform: rotate(180deg);
+}
+
+.refresh-data-toggle:active:not(.is-refreshing):not(:disabled) {
+    transform: scale(0.92);
+}
+
+/* Active Refreshing State - Clean, upright spinner */
+.refresh-data-toggle.is-refreshing,
+.refresh-data-toggle:disabled {
+    cursor: not-allowed;
+    pointer-events: none;
+    background: transparent !important;
+    transform: none !important;
+    opacity: 0.9;
+}
+
+.refresh-data-toggle.is-refreshing .refresh-icon {
+    color: var(--primary-color, #3b82f6);
+    transform: none !important;
+    animation: clean-spin 0.9s linear infinite;
+}
+
+@keyframes clean-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Unified Refresh Loading State -->
+<div id="attendanceLoadingState" class="unified-loading-container" style="display: none;">
+    <div class="unified-loading-card">
+        <div class="unified-loading-icon">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <h3 class="unified-loading-title">Refreshing Attendance</h3>
+        <p id="loadingStatusText" class="unified-loading-status">Connecting to CMS Portal...</p>
+
+        <div class="unified-progress-bar-wrap">
+            <div class="unified-progress-bar" id="unifiedProgressBar" style="width: 0%"></div>
+        </div>
+
+        <div class="unified-steps" id="unifiedSteps">
+            <div class="unified-step active" id="step-connect">
+                <span class="step-dot"></span>
+                <span class="step-label">Connecting to CMS</span>
+            </div>
+            <div class="unified-step" id="step-scrape">
+                <span class="step-dot"></span>
+                <span class="step-label">Fetching attendance records</span>
+            </div>
+            <div class="unified-step" id="step-analyze">
+                <span class="step-dot"></span>
+                <span class="step-label">Analyzing updates & thresholds</span>
+            </div>
+            <div class="unified-step" id="step-finalize">
+                <span class="step-dot"></span>
+                <span class="step-label">Finalizing snapshot</span>
+            </div>
+        </div>
+
+        <p id="loadingSubtext" class="unified-loading-attempt">Authenticating session with university portal...</p>
+    </div>
+</div>
+
+<!-- Course Detailed Attendance Loading State -->
+<div id="courseDetailLoadingState" class="detail-loading-container" style="display: none;">
+    <div class="detail-loading-card">
+        <div class="detail-loading-header">
+            <h3 class="detail-loading-course" id="courseDetailName">Loading Course</h3>
+        </div>
+
+        <p class="detail-loading-status">Syncing lecture timeline with CMS...</p>
+
+        <div class="detail-loading-progress" role="progressbar" aria-label="Loading lecture timeline">
+            <div class="detail-loading-bar"></div>
+        </div>
+    </div>
+</div>
+
+<div id="attendanceMainContent">
+{% include 'components/discord_notice_banner.html' %}
+
+<!-- Attendance Updates Section -->
+<div class="attendance-updates-section {{ updates.section_class if updates else 'attendance-updates-always-visible' }} mb-6" id="attendanceUpdates">
+    {% set scheduled_changes = (updates.changes | selectattr('is_scheduled', 'equalto', true) | list) if updates and updates.changes else [] %}
+    {% set unscheduled_changes = (updates.changes | rejectattr('is_scheduled', 'equalto', true) | rejectattr('type', 'equalto', 'system') | list) if updates and updates.changes else [] %}
+    {% set system_messages = (updates.changes | selectattr('type', 'equalto', 'system') | list) if updates and updates.changes else [] %}
+    {% set has_items = (scheduled_changes|length > 0 or unscheduled_changes|length > 0 or system_messages|length > 0) %}
+    
+    <div class="updates-header">
+        <div class="updates-header-main">
+            <div class="updates-header-left">
+                <h3 class="updates-title">Attendance Updates</h3>
+                {% if updates and updates.total_changes > 0 %}
+                <span class="updates-count-badge">
+                    <span class="count-pulse" aria-hidden="true"></span>
+                    {{ updates.total_changes }} new
+                </span>
+                {% else %}
+                <span class="updates-count-badge badge-neutral">Up to date</span>
+                {% endif %}
+            </div>
+            <div class="updates-header-right">
+                {% if updates and updates.has_attendance_changes %}
+                <button class="updates-btn-ghost updates-btn-desktop" onclick="markAsSeen(this)" title="Dismiss changes">
+                    <i class="fas fa-check"></i>
+                    <span>Mark as seen</span>
+                </button>
+                {% endif %}
+                <button class="updates-btn-icon" onclick="toggleUpdatesSection()" aria-label="Toggle section">
+                    <i class="fas fa-chevron-{{ 'down' if updates and updates.should_collapse else 'up' }}" id="updatesToggleIcon"></i>
+                </button>
+            </div>
+        </div>
+        {% if updates and updates.has_attendance_changes %}
+        <div class="updates-mobile-actions">
+            <button class="updates-btn-ghost updates-btn-mobile" onclick="markAsSeen(this)" title="Dismiss changes">
+                <i class="fas fa-check"></i>
+                <span>Mark as seen</span>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="updates-content {{ 'collapsed' if updates and updates.should_collapse else '' }}" id="updatesContent">
+        {% if has_items %}
+        <div class="updates-feed">
+            {% if scheduled_changes %}
+                {% if unscheduled_changes %}
+                <div class="updates-group-divider">Scheduled Classes</div>
+                {% endif %}
+                {% for change in scheduled_changes %}
+                <div class="update-row">
+                    <div class="update-type-icon {{ 'icon-present' if change.type == 'present' else 'icon-absent' if change.type == 'absent' else 'icon-neutral' }}">
+                        <i class="fas {{ 'fa-check' if change.type == 'present' else 'fa-times' if change.type == 'absent' else 'fa-info' }}"></i>
+                    </div>
+                    <div class="update-row-content">
+                        <span class="update-course-name">{{ change.course_name or change.message }}</span>
+                        <div class="update-meta-line">
+                            <span>Scheduled class</span>
+                            <span class="meta-sep">•</span>
+                            <span>{{ 'Marked present' if change.type == 'present' else 'Marked absent' if change.type == 'absent' else 'Updated' }}</span>
+                        </div>
+                    </div>
+                    {% if change.hours %}
+                    <div class="update-row-end">
+                        <span class="delta-badge {{ 'delta-present' if change.type == 'present' else 'delta-absent' if change.type == 'absent' else '' }}">
+                            {{ '+' if change.type == 'present' else '-' if change.type == 'absent' else '' }}{{ change.hours }} hr{{ 's' if change.hours != 1 else '' }}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+            
+            {% if unscheduled_changes %}
+                {% if scheduled_changes %}
+                <div class="updates-group-divider">Unscheduled Classes</div>
+                {% endif %}
+                {% for change in unscheduled_changes %}
+                <div class="update-row">
+                    <div class="update-type-icon {{ 'icon-present' if change.type == 'present' else 'icon-absent' if change.type == 'absent' else 'icon-neutral' }}">
+                        <i class="fas {{ 'fa-check' if change.type == 'present' else 'fa-times' if change.type == 'absent' else 'fa-info' }}"></i>
+                    </div>
+                    <div class="update-row-content">
+                        <span class="update-course-name">{{ change.course_name or change.message }}</span>
+                        <div class="update-meta-line">
+                            <span>Extra session</span>
+                            <span class="meta-sep">•</span>
+                            <span>{{ 'Marked present' if change.type == 'present' else 'Marked absent' if change.type == 'absent' else 'Updated' }}</span>
+                        </div>
+                    </div>
+                    {% if change.hours %}
+                    <div class="update-row-end">
+                        <span class="delta-badge {{ 'delta-present' if change.type == 'present' else 'delta-absent' if change.type == 'absent' else '' }}">
+                            {{ '+' if change.type == 'present' else '-' if change.type == 'absent' else '' }}{{ change.hours }} hr{{ 's' if change.hours != 1 else '' }}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+            
+            {% if system_messages %}
+                {% for message in system_messages %}
+                <div class="update-row">
+                    <div class="update-type-icon icon-neutral">
+                        <i class="fas fa-info"></i>
+                    </div>
+                    <div class="update-row-content">
+                        <span class="update-course-name" style="font-size: 0.85rem; font-weight: 500;">{{ message.message }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="updates-empty-row">
+            <i class="fas fa-check-circle" style="color: #22c55e;"></i>
+            <span>No new attendance changes recorded</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Course Attendance Details -->
+<div class="attendance-grid">
+            {% for course in attendance.courses %}
+            {% set safe_cname = (course.name|replace("'", "\\'") if course.name else '')|escape %}
+            <div class="attendance-card {{ course.status }}" onclick="viewDetails('{{ course.code }}', '{{ safe_cname }}')" style="cursor: pointer;">
+                <!-- Section 1: Course Info & Percentage -->
+                <div class="course-info-section">
+                    <div class="course-title-wrapper">
+                        <div class="course-name">{{ course.name }}</div>
+                        <div class="course-meta">
+                            <span class="course-credits badge-code" title="{{ course.credit_hours }} Credit Hours"><i class="far fa-clock" style="opacity: 0.85; margin-right: 0.25rem;"></i>{{ course.credit_hours if course.credit_hours is defined and course.credit_hours is not none else '—' }} Credit</span>
+                            <span class="course-instructor"><i class="fas fa-user-tie text-primary" style="opacity: 0.7;"></i> {{ course.instructor }}</span>
+                        </div>
+                    </div>
+                    <div class="attendance-badge {{ course.status }}">
+                        <span class="badge-number">{{ "%.1f"|format(course.attendance_percentage) }}</span><span class="badge-percent">%</span>
+                    </div>
+                </div>
+
+                <!-- Section 2: Stats -->
+                <div class="course-details-section">
+                    {% set cr = (course.credit_hours|int) if (course.credit_hours is defined and course.credit_hours is not none) else 3 %}
+                    {% set is_lab = ('lab' in course.name|lower) if course.name else false %}
+                    {% set calc_safe_max = 12 if is_lab else (1 if cr == 0 else (cr * 4)|int) %}
+                    {% set calc_fine_max = 19 if is_lab else (2 if cr == 0 else (cr * 16 * 0.40)|int) %}
+                    {% set cur_abs = (course.absences|default(0)|int) %}
+                    {% set s_skips = course.safe_skips if (course.safe_skips is defined and course.safe_skips is not none) else ([0, calc_safe_max - cur_abs]|max) %}
+                    {% set f_skips = course.fine_skips if (course.fine_skips is defined and course.fine_skips is not none) else ([0, calc_fine_max - [cur_abs, calc_safe_max]|max]|max) %}
+                    {% set safe_max = course.safe_max_absences if (course.safe_max_absences is defined and course.safe_max_absences is not none) else calc_safe_max %}
+                    {% set shortfall = course.shortfall_hours if (course.shortfall_hours is defined and course.shortfall_hours is not none) else ([0, cur_abs - safe_max]|max) %}
+                    {% set fine_amt = course.fine_amount if (course.fine_amount is defined and course.fine_amount is not none) else (shortfall * 500) %}
+
+                    <div class="attendance-stats-row">
+                        <div class="stat-cell" title="Total contact hours absent">
+                            <span class="stat-cell-value">{{ cur_abs }}</span>
+                            <span class="stat-cell-label">Absent</span>
+                        </div>
+                        <div class="stat-cell" title="Buffer to maintain ≥ 75% attendance">
+                            <span class="stat-cell-value {{ '' if s_skips > 0 else 'text-muted' }}">{{ s_skips }}</span>
+                            <span class="stat-cell-label">Safe Skips</span>
+                        </div>
+                        <div class="stat-cell" title="Allowed cushion down to 60% (Rs. 500/hr fine applies)">
+                            <span class="stat-cell-value {{ 'text-fine' if (s_skips == 0 and f_skips > 0) else ('text-muted' if f_skips == 0 else 'text-secondary-val') }}">{{ '+' ~ f_skips if f_skips > 0 else '0' }}</span>
+                            <span class="stat-cell-label">With Fine</span>
+                        </div>
+                    </div>
+
+                    {% if course.status == 'warning' and fine_amt > 0 %}
+                    <div class="course-alert-ribbon alert-warning clickable-ribbon" onclick="event.stopPropagation(); openPolicyModal();" title="Click to view Bahria University attendance policy">
+                        <i class="fas fa-exclamation-triangle ribbon-icon"></i>
+                        <span>Rs. {{ "{:,}".format(fine_amt) }} Fine • {{ shortfall }}h over limit • Univ. approval</span>
+                        <i class="fas fa-info-circle ribbon-info-hint" aria-hidden="true"></i>
+                    </div>
+                    {% elif course.status == 'danger' %}
+                    <div class="course-alert-ribbon alert-danger clickable-ribbon" onclick="event.stopPropagation(); openPolicyModal();" title="Click to view Bahria University attendance policy">
+                        <i class="fas fa-ban ribbon-icon"></i>
+                        <span>Debarred from exam • Below 60% • 'I' Grade</span>
+                        <i class="fas fa-info-circle ribbon-info-hint" aria-hidden="true"></i>
+                    </div>
+                    {% endif %}
+
+                    <div class="course-actions">
+                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); viewDetails('{{ course.code }}', '{{ safe_cname }}')" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Details</span>
+                            <i class="fas fa-chevron-right" style="font-size: 0.75rem; opacity: 0.7;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+</div> <!-- /#attendanceMainContent -->
+
+<!-- Bahria Attendance Policy Modal -->
+<div class="policy-modal-overlay" id="policyModalOverlay" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle" style="display: none;" onclick="handlePolicyModalBackdrop(event)">
+    <div class="policy-modal-dialog" onclick="event.stopPropagation()">
+        <div class="policy-modal-header">
+            <div class="policy-modal-title-wrap">
+                <div class="policy-modal-icon-badge">
+                    <i class="fas fa-university"></i>
+                </div>
+                <div>
+                    <h3 class="policy-modal-title" id="policyModalTitle">Bahria University Attendance Policy</h3>
+                    <p class="policy-modal-subtitle">Official examination eligibility &amp; fine regulations</p>
+                </div>
+            </div>
+            <button class="policy-modal-close" onclick="closePolicyModal()" aria-label="Close policy dialog">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="policy-modal-body">
+            <div class="policy-rules-list">
+                <div class="policy-rule-item">
+                    <div class="policy-rule-badge badge-safe">≥ 75%</div>
+                    <div class="policy-rule-content">
+                        <div class="policy-rule-title text-safe">Safe</div>
+                        <div class="policy-rule-desc">Exam eligible • No fine or permission needed</div>
+                    </div>
+                </div>
+
+                <div class="policy-rule-item">
+                    <div class="policy-rule-badge badge-warning">60% – 74%</div>
+                    <div class="policy-rule-content">
+                        <div class="policy-rule-title text-warning">Warning</div>
+                        <div class="policy-rule-desc">Allowed with fine of <strong>Rs. 500/hr</strong> shortfall + University approval</div>
+                    </div>
+                </div>
+
+                <div class="policy-rule-item">
+                    <div class="policy-rule-badge badge-danger">&lt; 60%</div>
+                    <div class="policy-rule-content">
+                        <div class="policy-rule-title text-danger">Debarred</div>
+                        <div class="policy-rule-desc">Cannot sit exams • Awarded <strong>'I' Grade</strong> (Must repeat course)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="policy-modal-note">
+                <i class="fas fa-info-circle policy-note-icon"></i>
+                <span>Fine applies at Rs. 500 per absent hour past the 12h safe limit (48 contact hours for 3-credit &amp; lab courses).</span>
+            </div>
+        </div>
+
+        <div class="policy-modal-footer">
+            <button class="policy-modal-done-btn" onclick="closePolicyModal()">Got it</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+
+{% block extra_css %}
+<style>
+/* Unified Loading State - Identical to Assignments & Monitor Pages */
+.unified-loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3.5rem 1rem;
+    min-height: 440px;
+    animation: unifiedFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes unifiedFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.unified-loading-card {
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    padding: 3rem 2.5rem;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+[data-theme="light"] .unified-loading-card {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.unified-loading-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary-color, #3b82f6), transparent);
+}
+
+.unified-loading-icon {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.25), inset 0 0 12px rgba(59, 130, 246, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: #60a5fa;
+    margin: 0 auto 1.5rem;
+    animation: pulse-icon 2.4s ease-in-out infinite;
+}
+
+/* Minimalist Course Detail Loading Card */
+.detail-loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 5rem 1rem;
+    min-height: 340px;
+    animation: detailFadeIn 0.2s ease-out forwards;
+}
+
+@keyframes detailFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.detail-loading-card {
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    padding: 2.25rem 2rem;
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+[data-theme="light"] .detail-loading-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color, #e2e8f0);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+.detail-loading-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+}
+
+.detail-loading-course {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+}
+
+.detail-loading-status {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0 0 1.5rem;
+}
+
+.detail-loading-progress {
+    width: 100%;
+    max-width: 220px;
+    height: 3.5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+}
+
+[data-theme="light"] .detail-loading-progress {
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.detail-loading-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary-color, #3b82f6);
+    border-radius: 999px;
+    animation: detailProgressive 3.2s cubic-bezier(0.12, 0.65, 0.15, 1) forwards;
+}
+
+[data-theme="light"] .detail-loading-bar {
+    background: var(--primary-color, #2563eb);
+}
+
+@keyframes detailProgressive {
+    0% { width: 0%; }
+    15% { width: 35%; }
+    40% { width: 65%; }
+    70% { width: 84%; }
+    90% { width: 92%; }
+    100% { width: 96%; }
+}
+
+@keyframes pulse-icon {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+    50% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+}
+
+.unified-loading-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.375rem;
+    letter-spacing: -0.01em;
+}
+
+.unified-loading-status {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem;
+    min-height: 1.25rem;
+    transition: opacity 0.25s ease;
+}
+
+.unified-progress-bar-wrap {
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.06));
+    border-radius: 999px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 1.75rem;
+}
+
+.unified-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    border-radius: 999px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.unified-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    text-align: left;
+    margin-bottom: 1.5rem;
+}
+
+.unified-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    transition: color 0.3s ease;
+}
+
+.unified-step.active {
+    color: var(--primary-color, #3b82f6);
+    font-weight: 500;
+}
+
+.unified-step.done {
+    color: var(--success-color, #22c55e);
+}
+
+.step-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    flex-shrink: 0;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.unified-step.active .step-dot {
+    background: var(--primary-color, #3b82f6);
+    border-color: var(--primary-color, #3b82f6);
+    animation: dot-pulse 1s ease-in-out infinite;
+}
+
+.unified-step.done .step-dot {
+    background: var(--success-color, #22c55e);
+    border-color: var(--success-color, #22c55e);
+}
+
+@keyframes dot-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.4); }
+}
+
+.unified-loading-attempt {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+    min-height: 1rem;
+    transition: opacity 0.25s ease;
+}
+
+/* Attendance Updates - Human-Crafted Activity Feed */
+.attendance-updates-section {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-theme="light"] .attendance-updates-section {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.attendance-updates-section:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+[data-theme="light"] .attendance-updates-section:hover {
+    border-color: #cbd5e1;
+}
+
+.updates-header {
+    display: flex;
+    flex-direction: column;
+    padding: 0.95rem 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .updates-header {
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.updates-header-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.75rem;
+}
+
+.updates-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.updates-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.updates-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.725rem;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.28);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.count-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #4ade80;
+    display: inline-block;
+    box-shadow: 0 1px 3px rgba(74, 222, 128, 0.5);
+    flex-shrink: 0;
+}
+
+[data-theme="light"] .count-pulse {
+    background-color: #16a34a;
+    box-shadow: 0 1px 3px rgba(22, 163, 74, 0.4);
+}
+
+.updates-count-badge.badge-neutral {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .updates-count-badge {
+    background: rgba(22, 163, 74, 0.1);
+    color: #16a34a;
+    border-color: rgba(22, 163, 74, 0.25);
+}
+
+[data-theme="light"] .updates-count-badge.badge-neutral {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+.updates-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.updates-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    height: 2rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--text-secondary);
+    font-size: 0.775rem;
+    font-weight: 500;
+    line-height: 1.35;
+    padding: 0 0.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.updates-btn-ghost:hover {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border-color: rgba(34, 197, 94, 0.32);
+}
+
+.updates-btn-ghost:active {
+    transform: scale(0.98);
+}
+
+[data-theme="light"] .updates-btn-ghost {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+[data-theme="light"] .updates-btn-ghost:hover {
+    background: rgba(22, 163, 74, 0.08);
+    color: #16a34a;
+    border-color: rgba(22, 163, 74, 0.3);
+}
+
+.updates-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+[data-theme="light"] .updates-btn-icon {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+.updates-btn-icon:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.updates-btn-icon:active {
+    transform: scale(0.95);
+}
+
+.updates-mobile-actions {
+    display: none;
+}
+
+.updates-feed {
+    display: flex;
+    flex-direction: column;
+    max-height: 360px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.updates-feed::-webkit-scrollbar {
+    width: 5px;
+}
+
+.updates-feed::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+}
+
+.update-row {
+    display: flex;
+    align-items: center;
+    gap: 0.95rem;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    transition: background-color 0.15s ease;
+}
+
+[data-theme="light"] .update-row {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.update-row:last-child {
+    border-bottom: none;
+}
+
+.update-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .update-row:hover {
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.update-type-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.update-type-icon.icon-present {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.update-type-icon.icon-absent {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.update-type-icon.icon-neutral {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.update-row-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.update-course-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.update-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.775rem;
+    color: var(--text-secondary);
+}
+
+.meta-sep {
+    opacity: 0.4;
+    font-size: 0.65rem;
+}
+
+.update-row-end {
+    flex-shrink: 0;
+}
+
+.delta-badge {
+    font-size: 0.775rem;
+    font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+.delta-badge.delta-present {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.delta-badge.delta-absent {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.updates-group-divider {
+    font-size: 0.675rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0.45rem 1.25rem 0.35rem;
+    background: rgba(0, 0, 0, 0.12);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] .updates-group-divider {
+    background: rgba(0, 0, 0, 0.02);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.updates-empty-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 1.15rem 1.25rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.mb-6 {
+    margin-bottom: 1.5rem;
+}
+
+.mt-6 {
+    margin-top: 1.5rem;
+}
+
+.grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.flex {
+    display: flex;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.attendance-legend {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.legend-item.safe .legend-dot {
+    background-color: var(--success-color);
+}
+
+.legend-item.warning .legend-dot {
+    background-color: var(--warning-color);
+}
+
+.legend-item.danger .legend-dot {
+    background-color: var(--error-color);
+}
+
+.attendance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.attendance-card {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    padding: 0;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.attendance-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    z-index: 10;
+}
+
+.attendance-card.safe::before { background-color: var(--success-color); }
+.attendance-card.warning::before { background-color: var(--warning-color); }
+.attendance-card.danger::before { background-color: var(--error-color); }
+
+.attendance-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+}
+
+.attendance-card:active {
+    transform: scale(0.98);
+    transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Section 1: Course Info & Percentage */
+.course-info-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1.5rem 1.5rem 1rem;
+    background: linear-gradient(to right, rgba(0,0,0, 0.01), transparent);
+}
+
+.course-title-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    margin-right: 1rem;
+    min-width: 0;
+}
+
+.course-name {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    hyphens: auto;
+    letter-spacing: -0.01em;
+}
+
+.course-meta {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.badge-code {
+    background-color: rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+    color: var(--primary-color);
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(var(--primary-rgb, 59, 130, 246), 0.2);
+}
+
+.course-instructor {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* Section 2: Details */
+.course-details-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: 1rem 1.5rem 1.5rem;
+}
+
+.attendance-badge {
+    font-weight: 800;
+    padding: 0.4rem 0.85rem;
+    border-radius: 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    display: flex;
+    align-items: baseline;
+    gap: 1px;
+}
+
+.badge-number {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.badge-percent {
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.attendance-badge.safe {
+    background-color: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.attendance-badge.warning {
+    background-color: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+    border: 1px solid rgba(250, 204, 21, 0.3);
+}
+
+.attendance-badge.danger {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* Progress Bar */
+.card-progress-section {
+    padding: 0 1.5rem;
+}
+
+.card-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.card-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+}
+
+.card-progress-fill.safe { background: #4ade80; }
+.card-progress-fill.warning { background: #facc15; }
+.card-progress-fill.danger { background: #f87171; }
+
+/* Horizontal Stats */
+.attendance-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.stat-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0.5rem 0.35rem;
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+.stat-cell:last-child {
+    border-right: none;
+}
+
+.stat-cell-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+}
+
+.stat-cell-label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    line-height: 1.3;
+}
+
+.text-safe {
+    color: #4ade80 !important;
+}
+[data-theme="light"] .text-safe {
+    color: #16a34a !important;
+}
+
+.text-fine {
+    color: #facc15 !important;
+}
+[data-theme="light"] .text-fine {
+    color: #d97706 !important;
+}
+
+.text-danger {
+    color: var(--error-color) !important;
+}
+
+.text-warning {
+    color: var(--warning-color) !important;
+}
+
+.text-muted {
+    color: var(--text-secondary, #94a3b8) !important;
+    opacity: 0.65;
+}
+
+/* Contextual Fine & Debar Ribbon */
+.course-alert-ribbon {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 0.45rem 0.7rem;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    line-height: 1.3;
+    animation: ribbonFadeIn 0.2s ease-out;
+}
+
+@keyframes ribbonFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.course-alert-ribbon .ribbon-icon {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.course-alert-ribbon.alert-warning {
+    background: rgba(234, 179, 8, 0.12);
+    color: #facc15;
+    border: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+[data-theme="light"] .course-alert-ribbon.alert-warning {
+    background: rgba(234, 179, 8, 0.12);
+    color: #b45309;
+    border-color: rgba(234, 179, 8, 0.28);
+}
+
+.course-alert-ribbon.alert-danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+[data-theme="light"] .course-alert-ribbon.alert-danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+    border-color: rgba(239, 68, 68, 0.28);
+}
+
+/* Header Policy Pill Button */
+.policy-header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    margin-right: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 2rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+}
+
+.policy-header-btn:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08));
+    border-color: rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+}
+
+.policy-header-btn:active {
+    transform: scale(0.96);
+}
+
+.policy-header-btn .policy-header-icon {
+    font-size: 0.85rem;
+    color: var(--primary-color, #3b82f6);
+}
+
+@media (max-width: 640px) {
+    .policy-header-btn {
+        padding: 0.35rem 0.55rem;
+        margin-right: 0.35rem;
+    }
+    .policy-header-label {
+        display: none;
+    }
+}
+
+/* Clickable Alert Ribbon on Course Cards */
+.course-alert-ribbon.clickable-ribbon {
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.course-alert-ribbon.clickable-ribbon:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+.ribbon-info-hint {
+    margin-left: auto;
+    font-size: 0.72rem;
+    opacity: 0.6;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.course-alert-ribbon.clickable-ribbon:hover .ribbon-info-hint {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Attendance Policy Modal Dialog */
+.policy-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 1rem;
+    animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.policy-modal-dialog {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    max-width: 520px;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUp {
+    from { transform: translateY(14px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.policy-modal-header {
+    padding: 1.15rem 1.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.policy-modal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.policy-modal-icon-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary-color, #3b82f6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+}
+
+.policy-modal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.25;
+}
+
+.policy-modal-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 0.15rem 0 0;
+}
+
+.policy-modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.15s ease;
+}
+
+.policy-modal-close:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.text-secondary-val {
+    color: var(--text-secondary, #94a3b8) !important;
+    font-weight: 600;
+}
+
+.policy-modal-body {
+    padding: 1.15rem 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.policy-rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.policy-rule-item {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 0.95rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+[data-theme="light"] .policy-rule-item {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.policy-rule-badge {
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 0.25rem 0.55rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    min-width: 78px;
+    text-align: center;
+}
+
+.badge-safe {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+[data-theme="light"] .badge-safe {
+    background: rgba(34, 197, 94, 0.12);
+    color: #15803d;
+}
+
+.badge-warning {
+    background: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+    border: 1px solid rgba(234, 179, 8, 0.25);
+}
+[data-theme="light"] .badge-warning {
+    background: rgba(234, 179, 8, 0.12);
+    color: #b45309;
+}
+
+.badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+[data-theme="light"] .badge-danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: #b91c1c;
+}
+
+.policy-rule-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.policy-rule-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.policy-rule-desc {
+    font-size: 0.77rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.policy-rule-desc strong {
+    color: var(--text-primary);
+}
+
+.policy-modal-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.7rem 0.9rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.policy-note-icon {
+    color: var(--primary-color, #3b82f6);
+    margin-top: 2px;
+    flex-shrink: 0;
+    font-size: 0.82rem;
+}
+
+.policy-modal-footer {
+    padding: 0.85rem 1.35rem;
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.policy-modal-done-btn {
+    padding: 0.45rem 1.25rem;
+    background: var(--primary-color, #3b82f6);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.policy-modal-done-btn:hover {
+    background: var(--primary-hover, #2563eb);
+}
+
+.policy-modal-done-btn:active {
+    transform: scale(0.97);
+}
+
+.danger-zone {
+    font-size: 0.75rem;
+    color: var(--error-color);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 20px;
+    margin-top: 0.5rem;
+}
+
+.course-actions {
+    display: flex;
+    margin-top: auto;
+    padding-top: 1rem;
+}
+
+.course-actions .btn {
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    box-shadow: none;
+    transition: background-color 0.2s ease, filter 0.2s ease;
+    font-size: 0.85rem;
+    width: 100%;
+    justify-content: center;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.course-actions .btn:hover {
+    transform: none;
+    box-shadow: none;
+    background: rgba(128, 128, 128, 0.2) !important;
+}
+
+
+
+.premium-grid-header {
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.5rem 2rem;
+}
+
+.header-content-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.header-titles .card-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.premium-legend {
+    display: flex;
+    gap: 1.25rem;
+    background: var(--bg-tertiary);
+    padding: 0.5rem 1.5rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.btn-refresh {
+    border-radius: 999px;
+    padding: 0.5rem 1.25rem;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-refresh:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .attendance-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .header-content-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1.25rem;
+    }
+    
+    .header-actions {
+        width: 100%;
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 1rem;
+    }
+    
+    .btn-refresh {
+        width: 100%;
+        padding: 0.75rem;
+    }
+    
+    .premium-legend {
+        justify-content: center;
+        flex-wrap: wrap;
+        padding: 0.75rem 1rem;
+        width: 100%;
+    }
+    
+    .course-info-section {
+        flex-direction: row;
+        align-items: flex-start;
+        padding: 1.15rem 1rem 0.85rem 1rem;
+        min-height: auto;
+        gap: 0.65rem;
+        min-width: 0;
+    }
+    
+    .course-name {
+        font-size: 1.15rem;
+        min-height: auto;
+        -webkit-line-clamp: unset;
+        display: block;
+        margin-bottom: 0.4rem;
+        min-width: 0;
+        word-break: break-word;
+    }
+    
+    .course-title-wrapper {
+        margin-right: 0;
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .course-meta {
+        display: flex;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+        min-width: 0;
+        max-width: 100%;
+        /* Hide scrollbar for a cleaner look */
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    
+    .course-meta::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .badge-code {
+        padding: 0.15rem 0.5rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .course-instructor {
+        font-size: 0.75rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .attendance-badge {
+        padding: 0.35rem 0.65rem;
+        margin-left: 0;
+        flex-shrink: 0;
+        border-radius: 0.65rem;
+    }
+
+    .badge-number {
+        font-size: 1.25rem;
+        line-height: 1.1;
+    }
+
+    .badge-percent {
+        font-size: 0.75rem;
+    }
+
+    .course-details-section {
+        padding: 0.85rem 1rem 1.15rem;
+    }
+
+    .card-progress-section {
+        padding: 0 1rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .updates-header {
+        padding: 0.85rem 1rem;
+        gap: 0.65rem;
+    }
+
+    .updates-title {
+        font-size: 0.9rem;
+    }
+
+    .updates-btn-desktop {
+        display: none !important;
+    }
+
+    .updates-mobile-actions {
+        display: block;
+        width: 100%;
+    }
+
+    .updates-btn-mobile {
+        width: 100%;
+        height: 2.35rem;
+        font-size: 0.825rem;
+        font-weight: 500;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+    }
+
+    [data-theme="light"] .updates-btn-mobile {
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+    }
+}
+
+@media (max-width: 480px) {
+    .grid-cols-4 {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function viewDetails(courseCode, courseName) {
+    const nameEl = document.getElementById('courseDetailName');
+    if (nameEl && courseName) nameEl.textContent = courseName;
+
+    const mainContent = document.getElementById('attendanceMainContent');
+    const refreshLoading = document.getElementById('attendanceLoadingState');
+    const detailLoading = document.getElementById('courseDetailLoadingState');
+    
+    if (mainContent) mainContent.style.display = 'none';
+    if (refreshLoading) refreshLoading.style.display = 'none';
+    if (detailLoading) {
+        detailLoading.style.display = 'flex';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Navigate to course summary endpoint
+    window.location.href = '/attendance/' + encodeURIComponent(courseCode) + '/summary';
+}
+
+function refreshAttendance() {
+    const button = document.getElementById('refreshDataToggle');
+    const icon = button ? button.querySelector('.refresh-icon, i') : null;
+    
+    // 1. Lock header button in clean spinning state without rotating container
+    if (button) {
+        button.classList.add('is-refreshing');
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
+    if (icon) {
+        icon.className = 'fas fa-sync-alt refresh-icon';
+    }
+    
+    // 2. Update age indicator badge
+    const ageText = document.getElementById('attendanceAgeText');
+    const ageIcon = document.getElementById('attendanceAgeIcon');
+    if (ageText) ageText.textContent = 'Syncing with CMS...';
+    if (ageIcon) ageIcon.className = 'fas fa-spinner fa-spin';
+
+    // 3. Reveal Unified Loading Card & hide main content
+    const mainContent = document.getElementById('attendanceMainContent');
+    const loadingState = document.getElementById('attendanceLoadingState');
+    if (mainContent) mainContent.style.display = 'none';
+    if (loadingState) {
+        loadingState.style.display = 'flex';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 4. Dynamic Steps & Progress State Machine
+    const STEPS = [
+        { id: 'step-connect',  pct: 22, status: 'Connecting to CMS Portal...', subtext: 'Authenticating session with university portal...' },
+        { id: 'step-scrape',   pct: 54, status: 'Fetching attendance records...', subtext: 'Scraping course lecture counts & percentages...' },
+        { id: 'step-analyze',  pct: 82, status: 'Analyzing updates & thresholds...', subtext: 'Comparing against previous snapshot...' },
+        { id: 'step-finalize', pct: 96, status: 'Finalizing attendance data...', subtext: 'Preparing dashboard view...' }
+    ];
+
+    const progressBar = document.getElementById('unifiedProgressBar');
+    const statusText = document.getElementById('loadingStatusText');
+    const subtextEl = document.getElementById('loadingSubtext');
+
+    function setStepState(index) {
+        const step = STEPS[index];
+        if (statusText) statusText.textContent = step.status;
+        if (subtextEl) subtextEl.textContent = step.subtext;
+        if (progressBar) progressBar.style.width = step.pct + '%';
+
+        STEPS.forEach((s, idx) => {
+            const el = document.getElementById(s.id);
+            if (!el) return;
+            el.classList.remove('active', 'done');
+            if (idx < index) el.classList.add('done');
+            else if (idx === index) el.classList.add('active');
+        });
+    }
+
+    // State progression timing
+    setStepState(0);
+    setTimeout(() => setStepState(1), 1400);
+    setTimeout(() => setStepState(2), 3400);
+    setTimeout(() => setStepState(3), 5800);
+
+    // 5. Navigate to backend refresh endpoint
+    window.location.href = '{{ url_for("attendance.refresh_attendance") }}';
+}
+
+function toggleUpdatesSection() {
+    const content = document.getElementById('updatesContent');
+    const icon = document.getElementById('updatesToggleIcon');
+    const section = document.getElementById('attendanceUpdates');
+    
+    if (content && icon) {
+        const isCollapsed = content.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            // Expand
+            content.classList.remove('collapsed');
+            icon.className = 'fas fa-chevron-up';
+            if (section) {
+                section.classList.remove('collapsed');
+            }
+        } else {
+            // Collapse
+            content.classList.add('collapsed');
+            icon.className = 'fas fa-chevron-down';
+            if (section) {
+                section.classList.add('collapsed');
+            }
+        }
+    }
+}
+
+function markAsSeen(btnEl) {
+    const button = btnEl || (typeof event !== 'undefined' && event.target ? event.target.closest('button') : null);
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Marking...</span>';
+    }
+    
+    // Navigate to mark as seen endpoint
+    window.location.href = '{{ url_for("attendance.mark_as_seen") }}';
+}
+
+function openPolicyModal() {
+    const modal = document.getElementById('policyModalOverlay');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handlePolicyModalKeydown);
+}
+
+function closePolicyModal() {
+    const modal = document.getElementById('policyModalOverlay');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    window.removeEventListener('keydown', handlePolicyModalKeydown);
+}
+
+function handlePolicyModalBackdrop(event) {
+    if (event.target === document.getElementById('policyModalOverlay')) {
+        closePolicyModal();
+    }
+}
+
+function handlePolicyModalKeydown(event) {
+    if (event.key === 'Escape') {
+        closePolicyModal();
+    }
+}
+
+// Initialize the section state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const content = document.getElementById('updatesContent');
+    const icon = document.getElementById('updatesToggleIcon');
+    
+    // Check if section should be collapsed by default
+    if (content && content.classList.contains('collapsed')) {
+        if (icon) {
+            icon.className = 'fas fa-chevron-down';
+        }
+    }
+    
+    // Format age indicator with strict timezone safety
+    const ageTextElement = document.getElementById('attendanceAgeText');
+    const lastUpdatedStr = "{% if attendance and attendance.last_updated %}{{ attendance.last_updated }}{% endif %}";
+    
+    if (lastUpdatedStr && ageTextElement) {
+        function parseSnapshotDate(dateStr) {
+            if (!dateStr) return null;
+            const s = dateStr.trim();
+            // If already has 'Z' or timezone offset (+HH:MM / -HH:MM), parse directly
+            if (s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s)) {
+                return new Date(s);
+            }
+            // If naive ISO format (produced by datetime.now() on Bahria CMS server in PKT):
+            // In Pakistan Standard Time (PKT), offset is UTC+5.
+            // Explicitly append '+05:00' so browsers in any timezone (local or abroad)
+            // correctly interpret this as Pakistan time instead of client local time.
+            return new Date(s + '+05:00');
+        }
+
+        function updateAgeDisplay() {
+            try {
+                const lastUpdated = parseSnapshotDate(lastUpdatedStr);
+                if (!lastUpdated || isNaN(lastUpdated.getTime())) return;
+                
+                const now = new Date();
+                const diffMs = now.getTime() - lastUpdated.getTime();
+                const diffSeconds = Math.floor(diffMs / 1000);
+                const diffMins = Math.floor(diffSeconds / 60);
+                
+                let timeStr = "";
+                // Handle small negative diff due to client/server clock skew (< 60s) as "just now"
+                if (diffSeconds < 60 && diffSeconds > -60) {
+                    timeStr = "just now";
+                } else if (diffMins < 1) {
+                    timeStr = "just now";
+                } else if (diffMins < 60) {
+                    timeStr = `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+                } else if (diffMins < 1440) {
+                    const hours = Math.floor(diffMins / 60);
+                    timeStr = `${hours} hr${hours !== 1 ? 's' : ''} ago`;
+                } else {
+                    const days = Math.floor(diffMins / 1440);
+                    timeStr = `${days} day${days !== 1 ? 's' : ''} ago`;
+                }
+                
+                ageTextElement.textContent = `Refreshed ${timeStr}`;
+                ageTextElement.title = `Snapshot time: ${lastUpdated.toLocaleString()}`;
+            } catch (e) {
+                console.error("Error parsing snapshot date:", e);
+            }
+        }
+
+        updateAgeDisplay();
+        // Keep age live every 30 seconds
+        setInterval(updateAgeDisplay, 30000);
+    }
+});
+</script>
+{% endblock %}

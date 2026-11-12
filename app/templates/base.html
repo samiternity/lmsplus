@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    {% include "includes/analytics.html" %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LMS+{% endblock %}</title>
+    
+    {% block meta %}
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lmsplus.xyz/">
+    <meta property="og:site_name" content="LMS+">
+    <meta property="og:title" content="LMS+ | The Modern Bahria LMS Alternative">
+    <meta property="og:description" content="Track attendance, assignments, and timetable efficiently in one unified dashboard.">
+    <meta property="og:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:secure_url" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    {% endblock %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=3">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=3">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}?v=3">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=37">
+
+    {% block extra_css %}{% endblock %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body {% if current_user.is_authenticated %}data-user-authenticated{% endif %}>
+    <!-- Progressive enhancement: avoid FOUC by adding js-enabled class immediately -->
+    <script>
+        document.body.classList.add('js-enabled');
+        const themePref = localStorage.getItem('themePreference') || 'dark';
+        if (themePref === 'auto' || themePref === 'system') {
+            const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        } else {
+            document.documentElement.setAttribute('data-theme', themePref);
+        }
+    </script>
+    <div class="app-container">
+        {% if current_user.is_authenticated %}
+        {% if not hide_chrome %}
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+ Logo" class="logo-image logo-expanded">
+                    <img src="{{ url_for('static', filename='logo-transparent.png') }}" alt="LMS+ Icon" class="logo-image logo-collapsed">
+                </div>
+            </div>
+
+
+
+        {% set is_dashboard = (request.endpoint == 'main.dashboard') %}
+        {% set is_attendance = (request.endpoint == 'attendance.attendance') %}
+        {% set is_timetable = (request.endpoint == 'timetable.timetable') %}
+        {% set is_assignments = (request.endpoint == 'lms.assignments_new') %}
+        {% set is_monitor = (request.endpoint == 'lms.assignment_monitor') %}
+        {% set is_notes = (request.endpoint == 'lms.lecture_notes') %}
+        {% set is_quizzes = (request.endpoint == 'lms.quizzes') %}
+        {% set is_results = (request.endpoint in ['gpa.provisional_results', 'gpa.gpa_calculator']) %}
+        {% set is_community = (request.endpoint == 'community.community_service') %}
+        {% set is_settings = (request.endpoint == 'settings.settings') %}
+
+        {% set is_essentials_active = (is_dashboard or is_attendance or is_timetable) %}
+        {% set is_lms_active = (is_assignments or is_monitor or is_notes or is_quizzes) %}
+        {% set is_user_ipp = (current_user.cms_account and (current_user.cms_account.institute_id == '5' or (current_user.cms_account.cms_username and current_user.cms_account.cms_username.startswith('05-')))) %}
+        {% set is_academics_active = (is_results or (is_community and not is_user_ipp)) %}
+
+            <div class="sidebar-nav" id="sidebarNav">
+                <!-- Group 1: Essentials -->
+                <div class="nav-group">
+                    <span class="nav-group-title">Essentials</span>
+                    <a href="{{ url_for('main.dashboard') }}"
+                        class="nav-item-link {{ 'active' if is_dashboard else '' }}"
+                        data-tooltip="Dashboard">
+                        <i class="nav-item-icon fas fa-th-large"></i>
+                        <span class="nav-item-text">Dashboard</span>
+                    </a>
+                    <a href="{{ url_for('attendance.attendance') }}"
+                        class="nav-item-link {{ 'active' if is_attendance else '' }}"
+                        data-tooltip="Attendance">
+                        <i class="nav-item-icon fas fa-chart-line"></i>
+                        <span class="nav-item-text">Attendance</span>
+                    </a>
+                    <a href="{{ url_for('timetable.timetable') }}"
+                        class="nav-item-link {{ 'active' if is_timetable else '' }}"
+                        data-tooltip="Timetable">
+                        <i class="nav-item-icon fas fa-calendar-alt"></i>
+                        <span class="nav-item-text">Timetable</span>
+                    </a>
+                </div>
+
+                <!-- Group 2: LMS -->
+                <div class="nav-group">
+                    <span class="nav-group-title">LMS</span>
+                    <a href="{{ url_for('lms.assignment_monitor') }}"
+                        class="nav-item-link {{ 'active' if is_monitor else '' }}"
+                        data-tooltip="Assignment monitor">
+                        <i class="nav-item-icon fas fa-chart-pie"></i>
+                        <span class="nav-item-text">Assignment monitor</span>
+                    </a>
+                    <a href="{{ url_for('lms.assignments_new') }}"
+                        class="nav-item-link {{ 'active' if is_assignments else '' }}"
+                        data-tooltip="Assignments">
+                        <i class="nav-item-icon fas fa-tasks"></i>
+                        <span class="nav-item-text">Assignments</span>
+                    </a>
+                    <a href="{{ url_for('lms.lecture_notes') }}"
+                        class="nav-item-link {{ 'active' if is_notes else '' }}"
+                        data-tooltip="Lecture notes">
+                        <i class="nav-item-icon fas fa-file-alt"></i>
+                        <span class="nav-item-text">Lecture notes</span>
+                    </a>
+                    <a href="{{ url_for('lms.quizzes') }}"
+                        class="nav-item-link {{ 'active' if is_quizzes else '' }}"
+                        data-tooltip="Quizzes">
+                        <i class="nav-item-icon fas fa-clipboard-list"></i>
+                        <span class="nav-item-text">Quizzes</span>
+                    </a>
+                </div>
+
+                <!-- Group 3: Academics -->
+                <div class="nav-group">
+                    <span class="nav-group-title">Academics</span>
+                    <a href="{{ url_for('gpa.provisional_results') }}"
+                        class="nav-item-link {{ 'active' if is_results else '' }}"
+                        data-tooltip="Results">
+                        <i class="nav-item-icon fas fa-graduation-cap"></i>
+                        <span class="nav-item-text">Results</span>
+                    </a>
+                    {% if not is_user_ipp %}
+                    <a href="{{ url_for('community.community_service') }}"
+                        class="nav-item-link {{ 'active' if is_community else '' }}"
+                        data-tooltip="Community service">
+                        <i class="nav-item-icon fas fa-users"></i>
+                        <span class="nav-item-text">Community service</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="sidebar-profile" id="sidebarProfileManager">
+                    <div class="profile-info" id="sidebarProfileToggle" style="cursor: pointer;" data-tooltip="Profile options" onclick="document.getElementById('profileModalOverlay').style.display='flex';">
+                        <div class="user-avatar">
+                            {% if current_user.cms_account %}
+                                {{ current_user.cms_account.fetched_name[0].upper() }}
+                            {% else %}
+                                {{ current_user.username[0].upper() }}
+                            {% endif %}
+                        </div>
+                        <div class="user-details">
+                            <span class="user-name">
+                                {% if current_user.cms_account %}
+                                    {% set name = current_user.cms_account.fetched_name %}
+                                    {% set enrollment = current_user.cms_account.cms_username %}
+                                    {{ name if name and name != enrollment else enrollment }}
+                                    {% else %}
+                                    {{ current_user.username }}
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="profile-actions">
+                        <a href="{{ url_for('settings.settings') }}"
+                            class="sidebar-action-btn {{ 'active' if is_settings else '' }}"
+                            data-tooltip="Settings" aria-label="Settings">
+                            <i class="fas fa-cog"></i>
+                        </a>
+                        <button class="sidebar-toggle" id="sidebarToggle" data-tooltip="Collapse sidebar" aria-label="Collapse sidebar">
+                            <i class="fas fa-angle-double-left"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        {% endif %}
+
+        <div class="main-content">
+            {% if is_syncing and not hide_chrome and request.endpoint != 'main.sync_screen' %}
+            <div class="sync-banner">
+                <div class="sync-spinner"></div>
+                <span>Updating your data from CMS in the background...</span>
+            </div>
+            {% endif %}
+            {% if not hide_chrome %}
+            <header class="header">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menuToggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+
+                <div class="header-right">
+                    {% block header_actions %}{% endblock %}
+                </div>
+            </header>
+            {% endif %}
+
+            <main class="content">
+                {% block content %}{% endblock %}
+            </main>
+            
+            {% if not hide_chrome %}
+            <!-- Footer -->
+            <footer class="app-footer">
+                <div class="footer-content">
+                    <button class="author-badge" id="footerAuthorBtn">
+                        <span class="badge-text">Made by</span>
+                        <span class="badge-author">SAMI</span>
+                    </button>
+                </div>
+            </footer>
+            {% endif %}
+            
+            <!-- Social Card Modal -->
+            <div class="social-modal-overlay" id="socialModalOverlay">
+                <div class="social-modal" id="socialModal">
+                    <button class="social-card-close" id="socialCardClose" aria-label="Close" style="position: absolute; top: 12px; right: 12px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <div class="social-links">
+                        <a href="https://linkedin.com/in/samiullahq/" target="_blank" rel="noopener noreferrer" class="social-link linkedin" aria-label="LinkedIn">
+                            <i class="fab fa-linkedin"></i>
+                        </a>
+                        <a href="https://instagram.com/samiternity/" target="_blank" rel="noopener noreferrer" class="social-link instagram" aria-label="Instagram">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer" class="social-link discord" aria-label="Discord">
+                            <i class="fab fa-discord"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Content for non-authenticated users -->
+        <main class="content">
+            {% block unauthenticated_content %}{% endblock %}
+        </main>
+        
+        <!-- Footer for unauthenticated users -->
+        {% block unauth_footer %}
+        <footer class="app-footer unauthenticated">
+            <div class="footer-content">
+                <button class="author-badge" id="footerAuthorBtnUnauth">
+                    <span class="badge-text">Made by</span>
+                    <span class="badge-author">SAMI</span>
+                </button>
+            </div>
+        </footer>
+        {% endblock %}
+        
+        <!-- Social Card Modal -->
+        <div class="social-modal-overlay" id="socialModalOverlayUnauth">
+            <div class="social-modal" id="socialModalUnauth">
+                <button class="social-card-close" id="socialCardCloseUnauth" aria-label="Close" style="position: absolute; top: 12px; right: 12px;">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="social-links">
+                    <a href="https://linkedin.com/in/samiullahq/" target="_blank" rel="noopener noreferrer" class="social-link linkedin" aria-label="LinkedIn">
+                        <i class="fab fa-linkedin"></i>
+                    </a>
+                    <a href="https://instagram.com/samiternity/" target="_blank" rel="noopener noreferrer" class="social-link instagram" aria-label="Instagram">
+                        <i class="fab fa-instagram"></i>
+                    </a>
+                    <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer" class="social-link discord" aria-label="Discord">
+                        <i class="fab fa-discord"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Flash Messages Container -->
+    <div class="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash-message {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    <!-- Page-specific scripts -->
+    {% block scripts %}{% endblock %}
+
+    <!-- Sidebar Toggle & Theme Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const themeToggle = document.getElementById('themeToggle');
+
+            // Sidebar toggle functionality (Desktop collapse/expand)
+            if (sidebarToggle && sidebar) {
+                sidebarToggle.addEventListener('click', function () {
+                    sidebar.classList.toggle('collapsed');
+
+                    // Save state to localStorage
+                    const isCollapsed = sidebar.classList.contains('collapsed');
+                    localStorage.setItem('sidebarCollapsed', isCollapsed);
+                    sidebarToggle.setAttribute('data-tooltip', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+                    sidebarToggle.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+                });
+            }
+
+            // Restore sidebar state from localStorage (desktop only)
+            if (window.innerWidth > 768) {
+                const savedState = localStorage.getItem('sidebarCollapsed');
+                if (savedState === 'true' && sidebar) {
+                    sidebar.classList.add('collapsed');
+                    if (sidebarToggle) {
+                        sidebarToggle.setAttribute('data-tooltip', 'Expand sidebar');
+                        sidebarToggle.setAttribute('aria-label', 'Expand sidebar');
+                    }
+                }
+            }
+
+            // Prevent mobile drawer from inheriting collapsed desktop layout on resize
+            window.addEventListener('resize', function () {
+                if (!sidebar) return;
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('collapsed');
+                } else {
+                    const savedState = localStorage.getItem('sidebarCollapsed');
+                    if (savedState === 'true') {
+                        sidebar.classList.add('collapsed');
+                        if (sidebarToggle) {
+                            sidebarToggle.setAttribute('data-tooltip', 'Expand sidebar');
+                            sidebarToggle.setAttribute('aria-label', 'Expand sidebar');
+                        }
+                    }
+                }
+            });
+
+            // Theme menu functionality
+            const themeMenuToggle = document.getElementById('themeMenuToggle');
+            const themeMenu = document.querySelector('.theme-menu');
+            const themeOptions = document.querySelectorAll('.theme-option');
+
+            if (themeMenuToggle && themeMenu) {
+                // Get saved theme preference or default to 'dark'
+                let savedThemePreference = localStorage.getItem('themePreference') || 'dark';
+                applyTheme(savedThemePreference);
+                updateActiveThemeOption(savedThemePreference);
+
+                // Toggle theme menu dropdown
+                themeMenuToggle.addEventListener('click', function (e) {
+                    e.stopPropagation();
+
+                    // Close other dropdowns first
+                    const profileManager = document.querySelector('.profile-manager');
+                    if (profileManager) profileManager.classList.remove('active');
+
+                    themeMenu.classList.toggle('active');
+                });
+
+                // Handle theme option clicks
+                themeOptions.forEach(option => {
+                    option.addEventListener('click', function () {
+                        const selectedTheme = this.getAttribute('data-theme');
+                        localStorage.setItem('themePreference', selectedTheme);
+                        applyTheme(selectedTheme);
+                        updateActiveThemeOption(selectedTheme);
+                        themeMenu.classList.remove('active');
+                    });
+                });
+
+                // Close theme menu when clicking outside
+                document.addEventListener('click', function (e) {
+                    if (!themeMenu.contains(e.target)) {
+                        themeMenu.classList.remove('active');
+                    }
+                });
+
+                // Listen for system theme changes when in auto mode
+                if (window.matchMedia) {
+                    const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                    darkModeQuery.addEventListener('change', function (e) {
+                        const pref = localStorage.getItem('themePreference');
+                        if (pref === 'auto' || pref === 'system') {
+                            applyTheme(pref);
+                        }
+                    });
+                }
+            }
+
+            function applyTheme(preference) {
+                let actualTheme = preference;
+
+                if (preference === 'auto' || preference === 'system') {
+                    // Detect system preference
+                    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        actualTheme = 'dark';
+                    } else {
+                        actualTheme = 'light';
+                    }
+                }
+
+                document.documentElement.setAttribute('data-theme', actualTheme);
+            }
+
+            function updateActiveThemeOption(preference) {
+                themeOptions.forEach(option => {
+                    if (option.getAttribute('data-theme') === preference) {
+                        option.classList.add('active');
+                    } else {
+                        option.classList.remove('active');
+                    }
+                });
+            }
+
+            // Profile manager functionality
+            const profileManagerToggle = document.getElementById('profileManagerToggle');
+            const profileManager = document.querySelector('.profile-manager');
+            const profileAccountOptions = document.querySelectorAll('.profile-account-option');
+
+            if (profileManagerToggle && profileManager) {
+                profileManagerToggle.addEventListener('click', function (e) {
+                    e.stopPropagation();
+
+                    // Close other dropdowns first
+                    const themeMenu = document.querySelector('.theme-menu');
+                    if (themeMenu) themeMenu.classList.remove('active');
+
+                    profileManager.classList.toggle('active');
+                });
+
+                // Close dropdown when clicking outside (but not on links)
+                document.addEventListener('click', function (e) {
+                    // Allow links to work
+                    if (e.target.tagName === 'A' || e.target.closest('a')) {
+                        return;
+                    }
+
+                    if (!profileManager.contains(e.target)) {
+                        profileManager.classList.remove('active');
+                    }
+                });
+
+                // Handle account switching
+                profileAccountOptions.forEach(option => {
+                    option.addEventListener('click', function () {
+                        const accountId = this.getAttribute('data-account-id');
+                        switchAccount(accountId);
+                    });
+                });
+            }
+
+            // Add account button uses inline onclick for direct navigation
+
+            // MULTI-ACCOUNT: Manage accounts button (disabled)
+            // const manageAccountsBtn = document.getElementById('manageAccountsBtn');
+            // if (manageAccountsBtn) {
+            //     manageAccountsBtn.addEventListener('click', function () {
+            //         window.location.href = '/account/manage-accounts';
+            //     });
+            // }
+
+            // MULTI-ACCOUNT: Sign out current account button (disabled)
+            // const signOutCurrentBtn = document.getElementById('signOutCurrentBtn');
+            // if (signOutCurrentBtn) {
+            //     signOutCurrentBtn.addEventListener('click', function () {
+            //         if (confirm('Are you sure you want to sign out of the current CMS account?')) {
+            //             signOutCurrentAccount();
+            //         }
+            //     });
+            // }
+
+            function switchAccount(accountId) {
+                fetch('/auth/switch_account', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `account_id=${accountId}`
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Reload page to reflect account change
+                            window.location.reload();
+                        } else if (data.requires_auth) {
+                            // Account not authenticated - prompt for password
+                            promptForPassword(accountId);
+                        } else {
+                            alert('Error switching account: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error switching account');
+                    });
+            }
+
+            function promptForPassword(accountId) {
+                const password = prompt('This account requires authentication. Enter CMS password:');
+                if (!password) return;
+                
+                fetch('/auth/switch_account', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: `account_id=${accountId}&cms_password=${encodeURIComponent(password)}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert(data.error || 'Authentication failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Authentication failed');
+                });
+            }
+
+
+
+            function signOutCurrentAccount() {
+                fetch('/auth/logout_current_account', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    }
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Redirect to login page after signing out current account
+                            window.location.href = '/auth/login';
+                        } else {
+                            alert('Error signing out of current account: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error signing out of current account');
+                    });
+            }
+
+            // Global click handler to close all dropdowns
+            document.addEventListener('click', function (e) {
+                // Allow links to work normally
+                if (e.target.tagName === 'A' || e.target.closest('a')) {
+                    return;
+                }
+
+                const dropdowns = [
+                    document.querySelector('.profile-manager'),
+                    document.querySelector('.theme-menu')
+                ];
+
+                dropdowns.forEach(dropdown => {
+                    if (dropdown && !dropdown.contains(e.target)) {
+                        dropdown.classList.remove('active');
+                    }
+                });
+            });
+        });
+    </script>
+
+    <!-- Footer Social Modal Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle both authenticated and unauthenticated footer
+            const setupFooter = (btnId, overlayId, modalId, closeId) => {
+                const btn = document.getElementById(btnId);
+                const overlay = document.getElementById(overlayId);
+                const modal = document.getElementById(modalId);
+                const closeBtn = document.getElementById(closeId);
+                
+                if (btn && overlay && modal && closeBtn) {
+                    // Open modal
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        overlay.classList.add('active');
+                        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+                    });
+                    
+                    // Close modal via close button
+                    closeBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        overlay.classList.remove('active');
+                        document.body.style.overflow = ''; // Restore scrolling
+                    });
+                    
+                    // Close when clicking on overlay (blurred background)
+                    overlay.addEventListener('click', function(e) {
+                        if (e.target === overlay) {
+                            overlay.classList.remove('active');
+                            document.body.style.overflow = ''; // Restore scrolling
+                        }
+                    });
+                    
+                    // Prevent clicks inside modal from closing it
+                    modal.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                    });
+                    
+                    // Close on Escape key
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape' && overlay.classList.contains('active')) {
+                            overlay.classList.remove('active');
+                            document.body.style.overflow = ''; // Restore scrolling
+                        }
+                    });
+                }
+            };
+            
+            setupFooter('footerAuthorBtn', 'socialModalOverlay', 'socialModal', 'socialCardClose');
+            setupFooter('footerAuthorBtnUnauth', 'socialModalOverlayUnauth', 'socialModalUnauth', 'socialCardCloseUnauth');
+        });
+    </script>
+
+    <!-- LMS Alert Banner Manager -->
+    <script>
+        (function() {
+            let hideTimer = null;
+
+            function escapeHtml(str) {
+                if (!str) return '';
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            /**
+             * Display floating toast banner for LMS status (slow / unreachable)
+             * @param {string} title Banner headline
+             * @param {string} message Descriptive explanation
+             * @param {boolean} isError True for red error, false for warning amber
+             */
+            window.showLMSBanner = function(title, message, isError = false) {
+                if (hideTimer) {
+                    clearTimeout(hideTimer);
+                    hideTimer = null;
+                }
+
+                let banner = document.getElementById('lmsErrorBanner');
+                if (!banner) {
+                    banner = document.createElement('div');
+                    banner.id = 'lmsErrorBanner';
+                    banner.setAttribute('role', 'status');
+                    banner.setAttribute('aria-live', 'polite');
+                    document.body.appendChild(banner);
+                }
+                
+                banner.classList.remove('fade-out');
+                banner.className = 'lms-error-banner' + (isError ? ' is-error' : ' is-warning');
+
+                const iconClass = isError ? 'fa-exclamation-triangle' : 'fa-wifi';
+
+                banner.innerHTML = `
+                    <div class="lms-error-content">
+                        <div class="lms-error-icon-wrap">
+                            <i class="fas ${iconClass}"></i>
+                        </div>
+                        <div class="lms-error-text">
+                            <strong class="lms-error-title">${escapeHtml(title)}</strong>
+                            <p class="lms-error-desc">${escapeHtml(message)}</p>
+                        </div>
+                        <button class="lms-error-close" onclick="window.hideLMSBanner()" aria-label="Close notification">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+            };
+
+            window.hideLMSBanner = function() {
+                const banner = document.getElementById('lmsErrorBanner');
+                if (!banner || banner.classList.contains('fade-out')) return;
+
+                banner.classList.add('fade-out');
+                hideTimer = setTimeout(() => {
+                    if (banner && banner.parentElement) {
+                        banner.remove();
+                    }
+                    hideTimer = null;
+                }, 180);
+            };
+        })();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+
+    <!-- Initialize theme from user settings (only as fallback if no localStorage preference) -->
+    {% if current_user.is_authenticated %}
+    <script>
+        // Set initial theme from user preferences ONLY if no localStorage preference exists
+        // This ensures the theme picker selection takes priority over server-side defaults
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                {% if current_user.settings and current_user.settings.theme %}
+                // Only apply server-side theme if user hasn't made a local selection
+                const localThemePref = localStorage.getItem('themePreference');
+                if (!localThemePref) {
+                    const userTheme = '{{ current_user.settings.theme }}';
+                    if (userTheme && window.portal) {
+                        window.portal.setTheme(userTheme);
+                    }
+                }
+                {% endif %}
+            } catch (error) {
+                // Silently handle theme initialization errors
+            }
+        });
+    </script>
+    {% endif %}
+
+    {% if current_user.is_authenticated %}
+    <!-- Profile Signout Modal / Popover -->
+    <div class="survey-modal-overlay" id="profileModalOverlay" onclick="if(event.target === this) this.style.display='none';" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.1); z-index: 9999; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);">
+        <div class="profile-popover" style="position: absolute; bottom: 85px; left: 16px; background: var(--bg-primary); border: 1px solid var(--border-sidebar); border-radius: 16px; padding: 1.5rem; width: 280px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); animation: popUp 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;">
+            <!-- User Info -->
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border-color);">
+                <div class="user-avatar" style="width: 48px; height: 48px; min-width: 48px; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-weight: 600;">
+                    {% if current_user.cms_account %}
+                        {{ current_user.cms_account.fetched_name[0].upper() }}
+                    {% else %}
+                        {{ current_user.username[0].upper() }}
+                    {% endif %}
+                </div>
+                <div style="overflow: hidden;">
+                    <h4 style="margin: 0 0 0.25rem 0; color: var(--text-primary); font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {% if current_user.cms_account %}
+                            {% set name = current_user.cms_account.fetched_name %}
+                            {% set enrollment = current_user.cms_account.cms_username %}
+                            {{ name if name and name != enrollment else enrollment }}
+                        {% else %}
+                            {{ current_user.username }}
+                        {% endif %}
+                    </h4>
+                    <span style="display: block; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {% if current_user.cms_account %}
+                            {{ current_user.cms_account.cms_username }}
+                        {% else %}
+                            {{ current_user.email }}
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="{{ url_for('auth.logout') }}" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 0.875rem 1rem; color: white; text-decoration: none; border-radius: 10px; transition: background 0.2s; font-weight: 500; background: var(--error-color);" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">
+                    <i class="fas fa-power-off"></i> Sign out
+                </a>
+            </div>
+        </div>
+    </div>
+    <style>
+        @keyframes popUp {
+            from { opacity: 0; transform: translateY(10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+    </style>
+    {% endif %}
+
+    <!-- CMS Survey Modal -->
+    <div class="survey-modal-overlay" id="surveyModalOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center;">
+        <div class="survey-modal" style="background: var(--bg-primary, #1e1e2d); border: 1px solid var(--border-color, #323248); border-radius: var(--border-radius-lg, 12px); padding: 2rem; max-width: 520px; width: 90%; box-shadow: 0 15px 40px rgba(0,0,0,0.6);">
+            <div style="display: flex; align-items: center; margin-bottom: 1rem; color: #f59e0b;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-right: 1rem;"></i>
+                <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-primary, #fff);">Course feedback required</h3>
+            </div>
+            <p style="margin-bottom: 1.5rem; color: var(--text-secondary, #a1a5b7); line-height: 1.6;">
+                CMS requires course feedback before you can access LMS. We can submit neutral answers in a few seconds.
+            </p>
+            <div id="surveyModalActions" style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <a href="https://cms.bahria.edu.pk/Sys/Student/QualityAssurance/QualityAssuranceSurveys.aspx" target="_blank" class="btn btn-secondary" onclick="document.getElementById('surveyModalOverlay').style.display='none'; setTimeout(() => window.location.reload(), 10000);">
+                    <i class="fas fa-external-link-alt"></i> Open CMS portal
+                </a>
+                <button id="autoFillSurveysBtn" class="btn btn-primary" style="background: #3b82f6; border: none; color: #fff; padding: 0.6rem 1.2rem; border-radius: 8px; font-weight: 500; cursor: pointer;">
+                    <i class="fas fa-magic"></i> Auto-fill surveys
+                </button>
+            </div>
+            <div id="surveyModalLoading" style="display: none; text-align: center; color: var(--text-secondary, #a1a5b7); padding: 1rem 0;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2.2rem; margin-bottom: 1rem; color: #3b82f6;"></i>
+                <p id="surveyStatusText" style="font-weight: 500; font-size: 1rem; color: var(--text-primary, #fff); margin-bottom: 0.75rem;">Connecting to CMS...</p>
+                <div style="background: rgba(255,255,255,0.1); border-radius: 999px; height: 8px; width: 100%; overflow: hidden; margin-bottom: 0.5rem;">
+                    <div id="surveyProgressBar" style="background: #3b82f6; height: 100%; width: 15%; transition: width 0.4s ease;"></div>
+                </div>
+                <span id="surveyProgressDetail" style="font-size: 0.85rem; color: var(--text-muted, #7e8299);">Please wait a few seconds.</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global helper so lecture notes / assignments pages can trigger the modal immediately
+        window.showSurveyModal = function() {
+            const overlay = document.getElementById('surveyModalOverlay');
+            if (overlay) {
+                overlay.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+        };
+
+        // CMS Survey Checker for LMS pages
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only run on LMS pages, excluding setup routes
+            if (window.location.pathname.startsWith('/lms') && !window.location.pathname.includes('/setup')) {
+                // Check for surveys silently
+                fetch('/lms/api/cms/check-surveys')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.has_surveys) {
+                            window._pendingSurveys = data.surveys || [];
+                            window.showSurveyModal();
+                        }
+                    })
+                    .catch(err => console.error('Error checking surveys:', err));
+            }
+
+            const autoFillBtn = document.getElementById('autoFillSurveysBtn');
+            if (autoFillBtn) {
+                autoFillBtn.addEventListener('click', function() {
+                    const actionsEl = document.getElementById('surveyModalActions');
+                    const loadingEl = document.getElementById('surveyModalLoading');
+                    const statusText = document.getElementById('surveyStatusText');
+                    const progressBar = document.getElementById('surveyProgressBar');
+                    const progressDetail = document.getElementById('surveyProgressDetail');
+
+                    actionsEl.style.display = 'none';
+                    loadingEl.style.display = 'block';
+                    progressBar.style.width = '15%';
+                    progressBar.style.background = '#3b82f6';
+                    statusText.textContent = 'Connecting to CMS...';
+                    progressDetail.textContent = 'Please wait. Do not close this page.';
+
+                    fetch('/lms/api/cms/auto-fill-surveys', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.task_id) {
+                            const taskId = data.task_id;
+                            let pollCount = 0;
+                            const maxPolls = 60; // 2 minutes max
+                            progressBar.style.width = '30%';
+                            statusText.textContent = 'Submitting surveys...';
+
+                            const pollInterval = setInterval(() => {
+                                pollCount++;
+                                if (pollCount > maxPolls) {
+                                    clearInterval(pollInterval);
+                                    statusText.textContent = 'The request took too long. Please refresh the page and try again.';
+                                    actionsEl.style.display = 'flex';
+                                    return;
+                                }
+
+                                fetch(`/lms/api/cms/survey-progress?task_id=${encodeURIComponent(taskId)}`)
+                                    .then(r => r.json())
+                                    .then(pData => {
+                                        if (pData.success && pData.task) {
+                                            const task = pData.task;
+                                            if (task.message) {
+                                                statusText.textContent = task.message;
+                                            }
+                                            if (task.progress) {
+                                                progressBar.style.width = `${task.progress}%`;
+                                            } else {
+                                                // Slowly increment if waiting
+                                                const cur = parseInt(progressBar.style.width) || 30;
+                                                if (cur < 85) progressBar.style.width = `${cur + 5}%`;
+                                            }
+
+                                            if (task.status === 'completed') {
+                                                clearInterval(pollInterval);
+                                                progressBar.style.width = '100%';
+                                                progressBar.style.background = '#10b981';
+                                                statusText.textContent = task.message || 'Surveys submitted!';
+                                                progressDetail.textContent = 'Refreshing your LMS access...';
+                                                setTimeout(() => {
+                                                    window.location.reload();
+                                                }, 1200);
+                                            } else if (task.status === 'failed') {
+                                                clearInterval(pollInterval);
+                                                progressBar.style.background = '#ef4444';
+                                                statusText.textContent = 'Could not submit surveys: ' + (task.error || 'Please try again.');
+                                                progressDetail.textContent = 'You can still finish them manually on the CMS portal.';
+                                                actionsEl.style.display = 'flex';
+                                            }
+                                        }
+                                    })
+                                    .catch(pe => console.error('Poll error:', pe));
+                            }, 2000);
+                        } else {
+                            alert('Could not start survey submission: ' + (data.error || 'Please try again.'));
+                            actionsEl.style.display = 'flex';
+                            loadingEl.style.display = 'none';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error auto-filling:', err);
+                        alert('Something went wrong while submitting surveys. Please try again.');
+                        actionsEl.style.display = 'flex';
+                        loadingEl.style.display = 'none';
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,462 @@
+/* Quiz browsing uses the existing LMS course-page styles. */
+
+    #quizzesContainer .table-responsive {
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #quizzesContainer .table-responsive:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    /* TomSelect Premium Overrides */
+    .ts-control {
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-color);
+        background-color: rgba(15, 23, 42, 0.6) !important;
+        color: #f8fafc !important;
+        padding: 0.625rem 2.5rem 0.625rem 0.875rem !important;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(8px);
+        transition: all 0.2s;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+          cursor: pointer !important;
+    }
+    .ts-control.focus {
+        border-color: rgba(59, 130, 246, 0.4) !important;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    }
+    .ts-dropdown {
+        background-color: rgba(30, 41, 59, 0.95);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        backdrop-filter: blur(12px);
+        color: #f8fafc;
+        margin-top: 4px;
+        z-index: 1060 !important;
+    }
+    .ts-dropdown .option {
+        padding: 10px 16px;
+        transition: background 0.1s;
+    }
+    .ts-dropdown .option.active, 
+    .ts-dropdown .option:hover {
+        background-color: rgba(59, 130, 246, 0.2) !important;
+        color: #fff;
+    }
+    .course-selection-bar .ts-wrapper.single .ts-control::after {
+        content: '';
+        display: block;
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        margin: -5px 0 0;
+        border: solid var(--text-secondary, #94a3b8);
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg);
+        pointer-events: none;
+    }
+    .course-selection-bar .ts-wrapper.single.dropdown-active .ts-control::after {
+        margin-top: -1px;
+        transform: rotate(225deg);
+    }
+    .course-selection-bar .ts-control > .item {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.4;
+        font-size: 0.875rem;
+    }
+    .course-selection-bar .ts-wrapper.focus .ts-control {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+    .ts-control > input {
+          color: #f8fafc !important;
+          cursor: pointer !important;
+      }
+
+    /* Fix nested box issue caused by TomSelect copying classes */
+    .ts-wrapper.selection-dropdown {
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        min-height: 0 !important;
+    }
+    /* Unified Loading State Styles */
+    .unified-loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 4rem 1rem;
+        min-height: 400px;
+        animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    .unified-loading-card {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        padding: 3rem 2.5rem;
+        max-width: 420px;
+        width: 100%;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .unified-loading-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+    }
+
+    .unified-loading-icon {
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.2), inset 0 0 12px rgba(59, 130, 246, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: #60a5fa;
+        margin: 0 auto 1.5rem;
+        animation: pulse-icon 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-icon {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+    }
+
+    .unified-loading-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.375rem;
+    }
+
+    .unified-loading-status {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin: 0 0 1.25rem;
+        min-height: 1.25rem;
+        transition: opacity 0.3s;
+    }
+
+    .unified-progress-bar-wrap {
+        background: var(--bg-tertiary);
+        border-radius: 999px;
+        height: 6px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
+
+    .unified-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+        border-radius: 999px;
+        transition: width 0.5s ease;
+    }
+
+    .unified-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        text-align: left;
+        margin-bottom: 1rem;
+    }
+
+    .unified-step {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        transition: color 0.3s;
+    }
+
+    .unified-step.active { color: var(--primary-color); font-weight: 500; }
+    .unified-step.done { color: var(--success-color); }
+
+    .step-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        flex-shrink: 0;
+        transition: background 0.3s, border-color 0.3s;
+    }
+
+    .unified-step.active .step-dot {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        animation: dot-pulse 1s ease-in-out infinite;
+    }
+
+    .unified-step.done .step-dot {
+        background: var(--success-color);
+        border-color: var(--success-color);
+    }
+
+    @keyframes dot-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.4); }
+    }
+
+    .unified-loading-attempt {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin: 0;
+        min-height: 1rem;
+    }
+
+    /* Course-level loading overlay - Impeccable SaaS Redesign */
+    .loading-overlay {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 4rem 2rem;
+        animation: overlayReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+    }
+
+    @keyframes overlayReveal {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .loading-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 2.5rem 3.5rem;
+        box-shadow: 0 16px 40px var(--shadow-color);
+        position: relative;
+        overflow: hidden;
+        animation: cardHover 4s ease-in-out infinite;
+    }
+
+    /* Ambient shimmer matching the theme */
+    .loading-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: -150%; width: 50%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+        transform: skewX(-20deg);
+        animation: cardShimmer 3s infinite;
+    }
+
+    @keyframes cardHover {
+        0%, 100% { transform: translateY(0); box-shadow: 0 12px 32px var(--shadow-color); }
+        50% { transform: translateY(-4px); box-shadow: 0 20px 48px var(--shadow-color); }
+    }
+
+    @keyframes cardShimmer {
+        0% { left: -150%; }
+        100% { left: 250%; }
+    }
+
+    /* Sleek, enterprise geometric spinner */
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: conic-gradient(from 90deg, transparent 0%, transparent 40%, var(--primary-color) 80%, var(--primary-hover) 100%);
+        -webkit-mask-image: radial-gradient(farthest-side, transparent calc(100% - 4px), black calc(100% - 3px));
+        mask-image: radial-gradient(farthest-side, transparent calc(100% - 4px), black calc(100% - 3px));
+        animation: spin 1s linear infinite;
+        flex-shrink: 0;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .loading-text-wrapper {
+        height: 20px;
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .loading-text-scroller {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: textScrollSlot 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .loading-text {
+        height: 20px;
+        line-height: 20px;
+        color: var(--text-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 0;
+        white-space: nowrap;
+        text-align: center;
+    }
+
+    @keyframes textScrollSlot {
+        0%, 20%   { transform: translateY(0); }
+        25%, 45%  { transform: translateY(-20px); }
+        50%, 70%  { transform: translateY(-40px); }
+        75%, 95%  { transform: translateY(-60px); }
+        100%      { transform: translateY(-80px); }
+    }
+
+    /* Error State Styles */
+    .error-state-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 3rem 1rem;
+        min-height: 300px;
+    }
+
+    .error-state-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-lg);
+        box-shadow: 0 4px 20px var(--shadow-color);
+        padding: 2.5rem;
+        max-width: 400px;
+        width: 100%;
+        text-align: center;
+    }
+
+    .error-state-icon {
+        width: 64px;
+        height: 64px;
+        background-color: rgba(239, 68, 68, 0.1);
+        color: var(--error-color);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.75rem;
+        margin: 0 auto 1.5rem;
+    }
+
+    .error-state-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.75rem;
+    }
+
+    .error-state-message {
+        font-size: 0.9375rem;
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+        line-height: 1.5;
+    }
+
+    .error-state-actions {
+        display: flex;
+        justify-content: center;
+        gap: 0.75rem;
+    }
+
+    @media (max-width: 768px) {
+        .table-responsive table {
+            white-space: nowrap;
+        }
+        .table-responsive th:first-child,
+        .table-responsive td:first-child {
+            position: -webkit-sticky;
+            position: sticky;
+            left: 0;
+            background-color: var(--bg-primary) !important;
+            z-index: 10;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.08);
+            border-right: 1px solid var(--primary-color) !important;
+        }
+        
+        .table-responsive th:first-child {
+            z-index: 11;
+        }
+    }
+
+    /* Refined Download Buttons - Adding back subtle color to prevent dullness */
+    .subtle-download-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-primary);
+        white-space: nowrap;
+    }
+
+    /* Primary Accent (Assignment/Solution) */
+    .btn-soft-primary {
+        background: rgba(59, 130, 246, 0.08);
+        border-color: rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+    }
+    .btn-soft-primary:hover {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.3);
+        color: #93c5fd;
+        transform: translateY(-1px);
+    }
+    .btn-soft-primary i { color: #3b82f6; }
+
+    /* Modern Table Header */
+    .table thead th {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-bottom: 1px solid var(--border-color);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+
+    .quiz-status { color: var(--text-secondary); margin-top: 1rem; font-size: 0.875rem; }
+    #quizzesContainer td { font-variant-numeric: tabular-nums; }
+    #quizzesContainer .subtle-download-btn:focus-visible {
+        outline: 2px solid var(--primary-color); outline-offset: 3px;
+    }
+    #quizzesContainer td:nth-child(2) { min-width: 10rem; overflow-wrap: anywhere; }
+    @media (max-width: 768px) {
+        #quizzesContainer td:nth-child(2) { white-space: normal; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .unified-loading-icon, .loading-spinner { animation: none; }
+    }

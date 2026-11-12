@@ -1,0 +1,623 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Summary - {{ course.code }}{% endblock %}
+
+{% block content %}
+<!-- Course Detailed Attendance Loading State -->
+<div id="courseDetailLoadingState" class="detail-loading-container" style="display: none;">
+    <div class="detail-loading-card">
+        <div class="detail-loading-header">
+            <h3 class="detail-loading-course">{{ course.name }}</h3>
+        </div>
+
+        <p class="detail-loading-status">Syncing lecture timeline with CMS...</p>
+
+        <div class="detail-loading-progress" role="progressbar" aria-label="Loading lecture timeline">
+            <div class="detail-loading-bar"></div>
+        </div>
+    </div>
+</div>
+
+<div id="summaryMainContent">
+<div class="summary-top-bar mb-4">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <a href="{{ url_for('attendance.attendance') }}" class="btn btn-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Back to Attendance
+        </a>
+        <button class="btn btn-secondary btn-sm" id="refreshTimelineBtn" onclick="refreshCourseTimeline('{{ course.code }}', '{{ course.name|escape }}')">
+            <i class="fas fa-sync-alt"></i> Refresh Timeline
+        </button>
+    </div>
+    <div class="attendance-age-indicator" id="attendanceAgeIndicator" style="display: flex; align-items: center; font-size: 0.75rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 0.35rem 0.75rem; border-radius: 2rem; border: 1px solid var(--border-color); white-space: nowrap; font-weight: 500;">
+        <i class="far fa-clock" id="attendanceAgeIcon" style="margin-right: 0.4rem; opacity: 0.7;"></i>
+        <span id="attendanceAgeText">{% if last_updated %}Refreshed recently{% else %}Ready{% endif %}</span>
+    </div>
+</div>
+
+<div class="course-header card mb-6 premium-header">
+    <div class="card-body header-body">
+        <div class="header-content">
+            <div class="course-info">
+                <div class="mb-3">
+                    <span class="badge-code">{{ course.code }}</span>
+                </div>
+                <h2 class="course-title">{{ course.name }}</h2>
+                <div class="course-meta-info">
+                    <span class="meta-item">
+                        <div class="meta-icon"><i class="fas fa-user-tie"></i></div>
+                        <span class="meta-text">{{ course.instructor }}</span>
+                    </span>
+                    <span class="meta-item">
+                        <div class="meta-icon"><i class="fas fa-clock"></i></div>
+                        <span class="meta-text">{{ course.credit_hours }} Cr. Hours</span>
+                    </span>
+                </div>
+            </div>
+            
+            <div class="attendance-overall {{ course.status }}">
+                <div class="overall-inner">
+                    <div class="overall-label">Overall Attendance</div>
+                    <div class="overall-value">{{ "%.1f"|format(course.attendance_percentage) }}%</div>
+                    <div class="overall-subtext">
+                        <i class="fas fa-check-circle"></i> {{ course.attended_classes }} of {{ course.total_classes }} classes attended
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-list-ul"></i> Detailed Timeline</h3>
+        <p class="card-subtitle">Chronological record of your attendance</p>
+    </div>
+    <div class="card-body p-0">
+        {% if course.summary %}
+        <div class="table-responsive">
+            <table class="table timeline-table">
+                <thead>
+                    <tr>
+                        <th class="w-date">Date</th>
+                        <th>Type & Room</th>
+                        <th>Remarks / Topics Covered</th>
+                        <th class="text-center">Total Hrs</th>
+                        <th class="text-center">Present</th>
+                        <th class="text-center">Absent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in course.summary %}
+                    <tr class="{% if row.absent_hours and row.absent_hours|float > 0 %}absent-row{% else %}present-row{% endif %}">
+                        <td class="td-date">
+                            {% set date_parts = row.date.split(', ') %}
+                            {% if date_parts|length >= 2 %}
+                            <div class="date-container">
+                                <div class="day-badge">{{ date_parts[0] }}</div>
+                                <div class="date-text">{{ date_parts[1] }}</div>
+                            </div>
+                            {% else %}
+                            <div class="date-container">
+                                <div class="date-text">{{ row.date }}</div>
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="type-text">{{ row.type }}</div>
+                            <div class="room-text"><i class="fas fa-map-marker-alt"></i> {{ row.room }}</div>
+                        </td>
+                        <td class="remarks-col">
+                            {{ row.remarks }}
+                        </td>
+                        <td class="text-center font-medium">{{ row.total_hours }}</td>
+                        <td class="text-center text-success font-medium">{{ row.present_hours }}</td>
+                        <td class="text-center {% if row.absent_hours and row.absent_hours|float > 0 %}text-danger font-bold{% else %}text-muted{% endif %}">{{ row.absent_hours }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state p-8 text-center">
+            <div class="empty-icon text-4xl mb-4 text-gray-400"><i class="fas fa-folder-open"></i></div>
+            <h4 class="empty-title text-xl font-bold mb-2">No detailed data available</h4>
+            <p class="empty-desc text-gray-500">We couldn't fetch the detailed timeline for this course.</p>
+            <button onclick="refreshCourseTimeline('{{ course.code }}', '{{ course.name|escape }}');" class="btn btn-primary mt-4">
+                <i class="fas fa-sync-alt"></i> Try Fetching Again
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+</div> <!-- /#summaryMainContent -->
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .mb-3 { margin-bottom: 0.75rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .mb-6 { margin-bottom: 1.5rem; }
+    .p-0 { padding: 0 !important; }
+    .p-8 { padding: 2rem; }
+    .text-center { text-align: center; }
+    .font-medium { font-weight: 500; }
+    .font-bold { font-weight: 700; }
+    .text-4xl { font-size: 2.25rem; }
+    
+    .premium-header {
+        border: none;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
+    }
+    
+    .premium-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 6px;
+        height: 100%;
+        background: var(--primary-color);
+    }
+    
+    .header-body {
+        padding: 2rem !important;
+    }
+    
+    .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 2rem;
+    }
+    
+    .course-info {
+        flex: 1;
+    }
+
+    .course-title {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+    }
+    
+    .course-meta-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: center;
+    }
+    
+    .badge-code {
+        background-color: rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+        color: var(--primary-color);
+        padding: 0.35rem 1rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+        border: 1px solid rgba(var(--primary-rgb, 59, 130, 246), 0.2);
+    }
+    
+    .meta-item {
+        display: flex;
+        align-items: center;
+        background: var(--bg-primary);
+        padding: 0.4rem 1rem 0.4rem 0.4rem;
+        border-radius: 999px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        border: 1px solid var(--border-color);
+    }
+    
+    .meta-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bg-tertiary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-color);
+        margin-right: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .meta-text {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    
+    .attendance-overall {
+        background: transparent;
+        padding: 0;
+        border: none;
+        min-width: 200px;
+    }
+    
+    .overall-inner {
+        background: var(--bg-primary);
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+        border: 1px solid var(--border-color);
+        text-align: right;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .overall-inner::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+    }
+    
+    .attendance-overall.safe .overall-inner::before { background-color: var(--success-color); }
+    .attendance-overall.warning .overall-inner::before { background-color: var(--warning-color); }
+    .attendance-overall.danger .overall-inner::before { background-color: var(--error-color); }
+    
+    .overall-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .overall-value {
+        font-size: 3rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-bottom: 0.75rem;
+        letter-spacing: -1px;
+    }
+    
+    .attendance-overall.safe .overall-value { color: var(--success-color); }
+    .attendance-overall.warning .overall-value { color: var(--warning-color); }
+    .attendance-overall.danger .overall-value { color: var(--error-color); }
+    
+    .overall-subtext {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.4rem;
+    }
+    
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+    }
+    
+    .timeline-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    
+    .timeline-table th {
+        background-color: var(--bg-tertiary);
+        padding: 1.25rem 1.5rem;
+        font-weight: 700;
+        text-align: left;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        border-bottom: 2px solid var(--border-color);
+        position: sticky;
+        top: 0;
+    }
+    
+    .timeline-table td {
+        padding: 1.25rem 1.5rem;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary);
+        transition: background-color 0.2s ease;
+    }
+    
+    .timeline-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .timeline-table tbody tr:hover td {
+        background-color: var(--bg-tertiary);
+    }
+    
+    .w-date {
+        width: 160px;
+    }
+    
+    .date-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+    
+    .day-badge {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--primary-color);
+        font-weight: 800;
+        background: rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        display: inline-block;
+        width: fit-content;
+    }
+    
+    .date-text {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+    
+    .type-text {
+        font-weight: 700;
+        font-size: 0.95rem;
+        margin-bottom: 0.35rem;
+        color: var(--text-primary);
+    }
+    
+    .room-text {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-weight: 600;
+    }
+    
+    .remarks-col {
+        max-width: 350px;
+        white-space: normal;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: var(--text-secondary);
+    }
+    
+    /* Make Absent Rows pop out more on both light and dark themes */
+    .timeline-table tbody tr.absent-row td {
+        background-color: rgba(239, 68, 68, 0.08) !important;
+        position: relative;
+    }
+    
+    .timeline-table tbody tr.absent-row:hover td {
+        background-color: rgba(239, 68, 68, 0.12) !important;
+    }
+    
+    /* Add a solid red border to the first cell of absent rows */
+    .timeline-table tbody tr.absent-row td:first-child {
+        box-shadow: inset 4px 0 0 var(--error-color);
+    }
+    
+    .text-success { color: var(--success-color); }
+    .text-danger { color: var(--error-color); }
+    .text-muted { color: var(--text-muted); }
+    
+    @media (max-width: 992px) {
+        .header-content {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 1.5rem;
+        }
+        
+        .attendance-overall, .overall-inner {
+            text-align: left;
+        }
+        
+        .overall-subtext {
+            justify-content: flex-start;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .header-body {
+            padding: 1.5rem !important;
+        }
+        
+        .course-title {
+            font-size: 1.75rem;
+        }
+        
+        .timeline-table th, .timeline-table td {
+            padding: 1rem;
+        }
+    }
+
+    .summary-top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    /* Minimalist Course Detail Loading Card */
+    .detail-loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 5rem 1rem;
+        min-height: 340px;
+        animation: detailFadeIn 0.2s ease-out forwards;
+    }
+
+    @keyframes detailFadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .detail-loading-card {
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 1rem;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+        padding: 2.25rem 2rem;
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    [data-theme="light"] .detail-loading-card {
+        background: #ffffff;
+        border: 1px solid var(--border-color, #e2e8f0);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+    }
+
+    .detail-loading-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.35rem;
+    }
+
+    .detail-loading-course {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+        letter-spacing: -0.01em;
+        line-height: 1.25;
+    }
+
+    .detail-loading-status {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin: 0 0 1.5rem;
+    }
+
+    .detail-loading-progress {
+        width: 100%;
+        max-width: 220px;
+        height: 3.5px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    [data-theme="light"] .detail-loading-progress {
+        background: rgba(0, 0, 0, 0.07);
+    }
+
+    .detail-loading-bar {
+        height: 100%;
+        width: 0%;
+        background: var(--primary-color, #3b82f6);
+        border-radius: 999px;
+        animation: detailProgressive 3.2s cubic-bezier(0.12, 0.65, 0.15, 1) forwards;
+    }
+
+    [data-theme="light"] .detail-loading-bar {
+        background: var(--primary-color, #2563eb);
+    }
+
+    @keyframes detailProgressive {
+        0% { width: 0%; }
+        15% { width: 35%; }
+        40% { width: 65%; }
+        70% { width: 84%; }
+        90% { width: 92%; }
+        100% { width: 96%; }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function refreshCourseTimeline(courseCode, courseName) {
+    const mainContent = document.getElementById('summaryMainContent');
+    const loadingState = document.getElementById('courseDetailLoadingState');
+    const refreshBtn = document.getElementById('refreshTimelineBtn');
+    
+    // Update age indicator badge during refresh
+    const ageText = document.getElementById('attendanceAgeText');
+    const ageIcon = document.getElementById('attendanceAgeIcon');
+    if (ageText) ageText.textContent = 'Syncing with CMS...';
+    if (ageIcon) ageIcon.className = 'fas fa-spinner fa-spin';
+
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+    }
+
+    if (mainContent) mainContent.style.display = 'none';
+    if (loadingState) {
+        loadingState.style.display = 'flex';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    window.location.href = '/attendance/' + encodeURIComponent(courseCode) + '/summary?force=1';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const ageTextElement = document.getElementById('attendanceAgeText');
+    const lastUpdatedStr = "{{ last_updated or '' }}";
+    
+    if (lastUpdatedStr && ageTextElement) {
+        function parseSnapshotDate(dateStr) {
+            if (!dateStr) return null;
+            const s = dateStr.trim();
+            if (s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s)) {
+                return new Date(s);
+            }
+            return new Date(s + '+05:00');
+        }
+
+        function updateAgeDisplay() {
+            try {
+                const lastUpdated = parseSnapshotDate(lastUpdatedStr);
+                if (!lastUpdated || isNaN(lastUpdated.getTime())) return;
+                
+                const now = new Date();
+                const diffMs = now.getTime() - lastUpdated.getTime();
+                const diffSeconds = Math.floor(diffMs / 1000);
+                const diffMins = Math.floor(diffSeconds / 60);
+                
+                let timeStr = "";
+                if (diffSeconds < 60 && diffSeconds > -60) {
+                    timeStr = "just now";
+                } else if (diffMins < 1) {
+                    timeStr = "just now";
+                } else if (diffMins < 60) {
+                    timeStr = `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+                } else if (diffMins < 1440) {
+                    const hours = Math.floor(diffMins / 60);
+                    timeStr = `${hours} hr${hours !== 1 ? 's' : ''} ago`;
+                } else {
+                    const days = Math.floor(diffMins / 1440);
+                    timeStr = `${days} day${days !== 1 ? 's' : ''} ago`;
+                }
+                
+                ageTextElement.textContent = `Refreshed ${timeStr}`;
+                ageTextElement.title = `Snapshot time: ${lastUpdated.toLocaleString()}`;
+            } catch (e) {
+                console.error("Error parsing snapshot date:", e);
+            }
+        }
+
+        updateAgeDisplay();
+        setInterval(updateAgeDisplay, 30000);
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Connect to LMS+{% endblock %}
+{% block content %}
+<section class="connector-consent" aria-labelledby="connector-title">
+    {% if client_name|default('Claude') != 'Claude' %}
+    <div class="connector-mark connector-mark-mcp"><span aria-hidden="true"></span></div>
+    {% else %}
+    <div class="connector-mark"><img src="{{ url_for('static', filename='images/claude.svg') }}" width="30" height="30" alt=""></div>
+    {% endif %}
+    {% if expired %}
+    <h1 id="connector-title">Start a new connection</h1>
+    <p>{{ error|default('This request expired or was already used. Return to your AI app and connect LMS+ again.', true) }}</p>
+    <a class="btn btn-secondary" href="{{ url_for('settings.settings') }}">Back to Settings</a>
+    {% else %}
+    <h1 id="connector-title">Connect {{ client_name }} to LMS+</h1>
+    {% if account_name %}<p class="connector-name">{{ account_name }}</p>{% endif %}
+    {% if account %}
+    <p class="connector-scope"><i class="fas fa-lock" aria-hidden="true"></i> {{ client_name }} can read pending assignments and attachments when you ask.</p>
+    {% else %}
+    <p>Sign in to your invited university account in LMS+, then try again.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('assignment_connector.consent') }}" class="connector-actions">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="request" value="{{ request_id }}">
+        {% if account %}<input type="hidden" name="account_id" value="{{ account.account_id }}">{% endif %}
+        <button class="btn btn-primary" type="submit" name="decision" value="allow" {% if not account %}disabled{% endif %}>Authorize</button>
+        <button class="btn btn-secondary" type="submit" name="decision" value="deny">Cancel</button>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}
+{% block extra_css %}
+<style>
+    .main-content:has(.connector-consent) { margin-inline-start: 0; min-width: 0; }
+    .content:has(> .connector-consent) {
+        display: grid;
+        place-items: center;
+        min-block-size: 100dvh;
+        padding: 1rem;
+        box-sizing: border-box;
+    }
+    .connector-consent {
+        box-sizing: border-box;
+        width: min(100%, 28rem);
+        padding: clamp(1.25rem, 5vw, 2rem);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
+    .connector-mark {
+        display: grid;
+        place-items: center;
+        inline-size: 3.25rem;
+        block-size: 3.25rem;
+        margin-block-end: 1.25rem;
+        border-radius: 12px;
+        background: rgba(217, 119, 87, 0.14);
+    }
+    .connector-mark-mcp { background: rgba(59, 130, 246, 0.12); color: var(--primary-color); }
+    .connector-mark-mcp span {
+        inline-size: 30px;
+        block-size: 30px;
+        background: currentColor;
+        mask: url("{{ url_for('static', filename='images/mcp.svg') }}") center / contain no-repeat;
+    }
+    .connector-consent h1 { font-size: clamp(1.45rem, 5vw, 1.85rem); line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+    .connector-consent p { color: var(--text-secondary); line-height: 1.5; margin: 0.85rem 0 1.25rem; }
+    .connector-consent .connector-name { color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
+    .connector-scope { display: flex; align-items: baseline; gap: 0.65rem; padding: 0.85rem; background: var(--bg-secondary); border-radius: 10px; font-size: 0.875rem; }
+    .connector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+    .connector-actions button { min-height: 44px; }
+    .connector-consent :focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; }
+    .connector-consent button:disabled { opacity: .6; cursor: not-allowed; }
+    @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+        .connector-actions button { transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1); }
+        .connector-actions button:enabled:active:not(:focus-visible) { transform: scale(0.97); }
+    }
+</style>
+{% endblock %}

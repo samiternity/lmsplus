@@ -1,0 +1,1292 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | LMS+{% endblock %}
+
+{% block header_actions %}
+{% if not no_accounts %}
+<!-- Refresh Data Button (styled like theme/notification icons) -->
+<div class="refresh-data-widget" style="margin-right: 1rem;">
+    <a href="{{ url_for('main.refresh_all_cms_data') }}" class="refresh-data-toggle" id="refreshDataToggle" title="Refresh All Data" 
+       style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.5rem; border-radius: 0.5rem; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1); display: flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; text-decoration: none;">
+        <i class="fas fa-sync-alt" id="refreshDataIcon" style="font-size: 1.1rem;"></i>
+    </a>
+</div>
+<style>
+.refresh-data-toggle:hover {
+    background: var(--hover-bg) !important;
+    transform: rotate(180deg);
+}
+.refresh-data-toggle:active {
+    transform: scale(0.95) rotate(180deg);
+}
+
+    /* Animation Framework */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-in {
+        opacity: 0;
+        animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .delay-1 { animation-delay: 50ms; }
+    .delay-2 { animation-delay: 100ms; }
+    .delay-3 { animation-delay: 150ms; }
+    .delay-4 { animation-delay: 200ms; }
+    .delay-5 { animation-delay: 250ms; }
+
+    
+    /* Premium Stat Card Hover Effects */
+    .stat-card {
+        transition: var(--smooth-hover);
+        /* Ensure we can transform children relative to this */
+    }
+    
+    .stat-card .text-3xl i {
+        display: inline-block;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-4px) scale(1.01);
+    }
+    
+    .stat-card:hover .text-3xl i {
+        transform: scale(1.2) translateY(-2px);
+        color: var(--primary-hover, #1d4ed8);
+    }
+    
+    /* Make the shadow a bit more pronounced on hover, respecting dark mode if any */
+    [data-theme="dark"] .stat-card:hover {
+        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.2);
+    }
+    
+    [data-theme="light"] .stat-card:hover,
+    :root:not([data-theme="dark"]) .stat-card:hover {
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+    }
+    
+    /* Interactive Hover Lifts */
+    .hover-lift {
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    
+    .hover-lift:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .animate-in {
+            animation-name: fadeIn;
+            transform: none !important;
+        }
+        
+        .hover-lift:hover {
+            transform: none !important;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    }
+</style>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% set is_user_ipp = is_ipp or (current_user.cms_account and (current_user.cms_account.institute_id == '5' or (current_user.cms_account.cms_username and current_user.cms_account.cms_username.startswith('05-')))) %}
+
+<!-- Unified Dashboard Refresh Overlay (Frosted Scrim) -->
+<div id="liveRefreshOverlay" class="unified-refresh-overlay" style="display: {% if is_syncing %}flex{% else %}none{% endif %};">
+    <div class="unified-loading-card">
+        <div class="unified-loading-icon">
+            <i class="fas fa-sync-alt" id="overlaySpinner"></i>
+        </div>
+        <h3 class="unified-loading-title">Refreshing Campus Records</h3>
+        <p id="overlayStatusText" class="unified-loading-status">Connecting to CMS...</p>
+
+        <div class="unified-progress-bar-wrap">
+            <div class="unified-progress-bar" id="overlayProgressBar" style="width: 10%"></div>
+        </div>
+
+        <div class="unified-steps" id="overlaySteps">
+            <div class="unified-step active" id="step-auth">
+                <span class="step-dot"></span>
+                <span class="step-label">Connecting to CMS</span>
+            </div>
+            <div class="unified-step" id="step-profile">
+                <span class="step-dot"></span>
+                <span class="step-label">Fetching student profile</span>
+            </div>
+            <div class="unified-step" id="step-timetable">
+                <span class="step-dot"></span>
+                <span class="step-label">Loading timetable</span>
+            </div>
+            <div class="unified-step" id="step-attendance">
+                <span class="step-dot"></span>
+                <span class="step-label">Loading attendance{% if not is_user_ipp %} & CSP{% endif %}</span>
+            </div>
+            <div class="unified-step" id="step-gpa">
+                <span class="step-dot"></span>
+                <span class="step-label">Finalizing records & GPA</span>
+            </div>
+        </div>
+
+        <p id="loadingAttemptText" class="unified-loading-attempt">
+            <button type="button" id="overlayDismissBtn" class="ghost-pill-btn" style="display: none;" onclick="dismissRefreshOverlay()">
+                Continue in background
+            </button>
+        </p>
+    </div>
+</div>
+
+{% if not no_accounts %}
+<!-- Welcome Greeting -->
+<div class="card mb-8 animate-in delay-1">
+    <div class="card-body" style="padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+        <h1 style="font-size: 1.75rem; font-weight: 600; margin: 0; color: var(--text-primary);">
+            Welcome back, 
+            <span style="color: var(--primary-color); font-weight: 700;">
+                {% if user_data and user_data.profile %}
+                    {% if user_data.profile.name %}
+                        {{ user_data.profile.name.title() }}
+                    {% elif user_data.profile.student_name %}
+                        {{ user_data.profile.student_name.title() }}
+                    {% else %}
+                        {{ user.id }}
+                    {% endif %}
+                {% else %}
+                    {{ user.id }}
+                {% endif %}
+            </span>
+        </h1>
+        {% if is_syncing %}
+        <div class="sync-pill" id="dashboardSyncPill" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.75rem; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 9999px; font-size: 0.8rem; color: #38bdf8;">
+            <i class="fas fa-sync-alt fa-spin"></i>
+            <span>Updating in background...</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if no_accounts %}
+<!-- No Accounts Message -->
+<div class="card mb-8">
+    <div class="card-body text-center">
+        <div class="text-6xl mb-4 text-primary"><i class="fas fa-user-graduate"></i></div>
+        <h2 class="text-2xl mb-4">Account Setup Issue</h2>
+        <p class="text-secondary mb-6">
+            There was an issue setting up your CMS account. Please try logging in again.
+        </p>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-primary">
+            <i class="fas fa-sign-out-alt"></i> Log Out and Try Again
+        </a>
+        <p class="text-sm text-secondary mt-4">
+            If this issue persists, please contact support.
+        </p>
+    </div>
+</div>
+{% else %}
+<!-- Quick Stats -->
+<div class="grid grid-cols-4 mb-8">
+    <div class="card stat-card animate-in delay-2">
+        <div class="card-body text-center">
+            <div class="text-3xl mb-2 text-primary"><i class="fas fa-graduation-cap"></i></div>
+            <h3 class="card-title" style="font-size: 1.25rem; word-break: break-word;">{{ user_data.profile.program if user_data and user_data.profile and user_data.profile.program else 'Unknown Program' }}</h3>
+            <p class="text-secondary">Enrolled Program</p>
+        </div>
+    </div>
+
+    <div class="card stat-card animate-in delay-2">
+        <div class="card-body text-center">
+            <div class="text-3xl mb-2 text-primary"><i class="fas fa-clipboard-list"></i></div>
+            <h3 class="card-title count-up" data-value="{{ stats.pending_assignments }}">0</h3>
+            <p class="text-secondary">Pending Assignments</p>
+        </div>
+    </div>
+
+    <div class="card stat-card animate-in delay-2">
+        <div class="card-body text-center">
+            <div class="text-3xl mb-2 text-primary"><i class="fas fa-bullseye"></i></div>
+            <h3 class="card-title count-up" data-value="{{ stats.current_gpa }}" data-decimals="2">0.00</h3>
+            <p class="text-secondary">Current GPA</p>
+        </div>
+    </div>
+
+    <div class="card stat-card animate-in delay-2">
+        <div class="card-body text-center">
+            <div class="text-3xl mb-2 text-primary"><i class="fas fa-hands-helping"></i></div>
+            {% if is_user_ipp %}
+            <h3 class="card-title">-</h3>
+            {% else %}
+            <h3 class="card-title count-up" data-value="{{ stats.csp_hours }}">0</h3>
+            {% endif %}
+            <p class="text-secondary">CSP Hours</p>
+        </div>
+    </div>
+</div>
+
+<!-- LMS Setup Prompt -->
+{% if lms_setup_needed %}
+<div class="card mb-8 lms-setup-prompt animate-in delay-3">
+    <div class="card-body">
+        <div class="lms-setup-content">
+            <div class="lms-setup-icon">
+                <i class="fas fa-graduation-cap"></i>
+            </div>
+            <div class="lms-setup-info">
+                <h3 class="lms-setup-title">🎓 Connect Your LMS Account</h3>
+                <p class="lms-setup-description">
+                    Access your assignments, lecture notes, and submit work directly from LMS+.
+                    Set up LMS integration in just a few clicks!
+                </p>
+                <div class="lms-setup-benefits">
+                    <span class="benefit-item">📚 View Assignments</span>
+                    <span class="benefit-item">📖 Access Lecture Notes</span>
+                    <span class="benefit-item">📤 Submit Files</span>
+                    <span class="benefit-item">🔔 Get Notifications</span>
+                </div>
+            </div>
+            <div class="lms-setup-actions">
+                <a href="{{ url_for('settings.lms_setup_wizard') }}" class="btn btn-primary">
+                    <i class="fas fa-rocket"></i> Setup LMS Integration
+                </a>
+                <button class="btn btn-outline btn-sm" onclick="dismissLMSPrompt()">
+                    <i class="fas fa-times"></i> Maybe Later
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- LMS Quick Access -->
+{% if lms_connected %}
+<div class="card mb-8 animate-in delay-3">
+    <div class="card-header">
+        <h3 class="card-title">📚 LMS Quick Access</h3>
+        <p class="card-subtitle">Your assignments and lecture notes</p>
+    </div>
+    <div class="card-body">
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="lms-stat-card">
+                <div class="lms-stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="lms-stat-content">
+                    <h4 class="lms-stat-number count-up" data-value="{{ lms_stats.pending_assignments or 0 }}">0</h4>
+                    <p class="lms-stat-label">Pending Assignments</p>
+                </div>
+            </div>
+
+            <div class="lms-stat-card">
+                <div class="lms-stat-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="lms-stat-content">
+                    <h4 class="lms-stat-number count-up" data-value="{{ lms_stats.total_notes or 0 }}">0</h4>
+                    <p class="lms-stat-label">Lecture Notes</p>
+                </div>
+            </div>
+
+            <div class="lms-stat-card">
+                <div class="lms-stat-icon">
+                    <i class="fas fa-book"></i>
+                </div>
+                <div class="lms-stat-content">
+                    <h4 class="lms-stat-number count-up" data-value="{{ lms_stats.total_courses or 0 }}">0</h4>
+                    <p class="lms-stat-label">Active Courses</p>
+                </div>
+            </div>
+        </div>
+
+        {% if lms_stats.urgent_assignments %}
+        <div class="urgent-assignments mb-4">
+            <h4 class="urgent-title">⚠️ Urgent Assignments</h4>
+            <div class="urgent-list">
+                {% for assignment in lms_stats.urgent_assignments[:3] %}
+                <div class="urgent-assignment hover-lift">
+                    <div class="urgent-assignment-info">
+                        <span class="urgent-assignment-title">{{ assignment.title }}</span>
+                        <span class="urgent-assignment-course">{{ assignment.course_code }}</span>
+                    </div>
+                    <div class="urgent-assignment-deadline">
+                        <span class="deadline-text">Due: {{ assignment.deadline.strftime('%b %d') if assignment.deadline
+                            else 'No deadline' }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="lms-quick-actions">
+            <a href="{{ url_for('lms.assignment_monitor') }}" class="btn btn-primary btn-sm">
+                <i class="fas fa-tachometer-alt"></i> Assignment Monitor
+            </a>
+            <a href="{{ url_for('lms.assignments_new') }}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-tasks"></i> View Assignments
+            </a>
+            <a href="{{ url_for('lms.lecture_notes') }}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-book-open"></i> Lecture Notes
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Upcoming Events -->
+<div class="card animate-in delay-4">
+    <div class="card-header">
+        <h3 class="card-title">Upcoming Events</h3>
+    </div>
+    <div class="card-body">
+        {% if upcoming_events %}
+        <div class="events-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+            {% for event in upcoming_events %}
+            <div class="event-card-new hover-lift" style="display: flex; align-items: center; gap: 1.25rem; padding: 1rem; background: var(--bg-secondary); border-radius: var(--border-radius); border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+                <div class="calendar-icon">
+                    <div class="calendar-month">{{ event.calendar_month }}</div>
+                    <div class="calendar-day">{{ event.calendar_day }}</div>
+                </div>
+                <div class="event-details" style="display: flex; flex-direction: column; gap: 0.25rem;">
+                    <div class="event-title" style="font-weight: 600; color: var(--text-primary); font-size: 1rem;">{{ event.title }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state text-center" style="padding: 1.5rem 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div class="text-4xl mb-2" style="color: var(--text-muted); opacity: 0.4;">
+                <i class="far fa-calendar-check"></i>
+            </div>
+            <p style="color: var(--text-secondary); font-weight: 500; font-size: 0.95rem; margin: 0;">No upcoming events at the moment</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Unified Refresh Frosted Scrim Overlay */
+    .unified-refresh-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: rgba(10, 15, 30, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        animation: overlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transition: opacity 0.35s ease;
+    }
+    [data-theme="light"] .unified-refresh-overlay {
+        background: rgba(248, 250, 252, 0.75);
+    }
+    @keyframes overlayFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .unified-refresh-overlay .unified-loading-card {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        padding: 3rem 2.5rem;
+        max-width: 420px;
+        width: 100%;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .unified-refresh-overlay .unified-loading-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+    }
+
+    [data-theme="light"] .unified-refresh-overlay .unified-loading-card {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .unified-refresh-overlay .unified-loading-icon {
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.2), inset 0 0 12px rgba(59, 130, 246, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: #60a5fa;
+        margin: 0 auto 1.5rem;
+        animation: pulse-icon 2.5s ease-in-out infinite;
+    }
+
+    .unified-refresh-overlay .unified-loading-icon i {
+        animation: gentleRotate 8s linear infinite;
+        display: inline-block;
+    }
+
+    @keyframes gentleRotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse-icon {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+    }
+
+    .unified-refresh-overlay .unified-loading-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.375rem;
+    }
+
+    .unified-refresh-overlay .unified-loading-status {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin: 0 0 1.25rem;
+        min-height: 1.25rem;
+        transition: opacity 0.3s;
+    }
+
+    .unified-refresh-overlay .unified-progress-bar-wrap {
+        background: var(--bg-tertiary);
+        border-radius: 999px;
+        height: 6px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
+
+    .unified-refresh-overlay .unified-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+        border-radius: 999px;
+        transition: width 0.5s ease;
+    }
+
+    .unified-refresh-overlay .unified-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        text-align: left;
+        margin-bottom: 1rem;
+    }
+
+    .unified-refresh-overlay .unified-step {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        transition: color 0.3s;
+    }
+
+    .unified-refresh-overlay .unified-step.active {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+    .unified-refresh-overlay .unified-step.done {
+        color: var(--text-secondary);
+    }
+    .unified-refresh-overlay .unified-step.warning {
+        color: var(--warning-color);
+    }
+
+    .unified-refresh-overlay .step-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        flex-shrink: 0;
+        transition: background 0.3s, border-color 0.3s;
+    }
+
+    .unified-refresh-overlay .unified-step.active .step-dot {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        animation: dot-pulse 1s ease-in-out infinite;
+    }
+
+    .unified-refresh-overlay .unified-step.done .step-dot {
+        background: var(--success-color);
+        border-color: var(--success-color);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    .unified-refresh-overlay .unified-step.done .step-dot::after {
+        content: '';
+        width: 3px;
+        height: 5px;
+        border: solid #ffffff;
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg) translate(-0.5px, -0.5px);
+        display: block;
+    }
+
+    .unified-refresh-overlay .unified-step.warning .step-dot {
+        background: var(--warning-color);
+        border-color: var(--warning-color);
+    }
+
+    @keyframes dot-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.4); }
+    }
+
+    .unified-refresh-overlay .unified-loading-attempt {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin: 0;
+        min-height: 1rem;
+        text-align: center;
+    }
+
+    .unified-refresh-overlay .ghost-pill-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .unified-refresh-overlay .ghost-pill-btn:hover {
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--text-primary);
+        border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    [data-theme="light"] .unified-refresh-overlay .ghost-pill-btn {
+        background: rgba(0, 0, 0, 0.03);
+        border-color: rgba(0, 0, 0, 0.1);
+    }
+
+    [data-theme="light"] .unified-refresh-overlay .ghost-pill-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+        border-color: rgba(0, 0, 0, 0.18);
+    }
+
+    .text-3xl {
+        font-size: 1.875rem;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .mb-2 {
+        margin-bottom: 0.5rem;
+    }
+
+    .mb-8 {
+        margin-bottom: 1.25rem;
+    }
+
+    .mt-4 {
+        margin-top: 1rem;
+    }
+
+    .mt-6 {
+        margin-top: 1.5rem;
+    }
+
+    .space-y-3>*+* {
+        margin-top: 0.75rem;
+    }
+
+    .space-y-4>*+* {
+        margin-top: 1rem;
+    }
+
+    .flex {
+        display: flex;
+    }
+
+    .flex-col {
+        flex-direction: column;
+    }
+
+    .items-center {
+        align-items: center;
+    }
+
+    .items-start {
+        align-items: flex-start;
+    }
+
+    .justify-between {
+        justify-content: space-between;
+    }
+
+    .gap-3 {
+        gap: 0.75rem;
+    }
+
+    .gap-4 {
+        gap: 1rem;
+    }
+
+    .p-3 {
+        padding: 0.75rem;
+    }
+
+    .p-4 {
+        padding: 1rem;
+    }
+
+    .bg-secondary {
+        background-color: var(--bg-secondary);
+    }
+
+    .rounded-lg {
+        border-radius: var(--border-radius-lg);
+    }
+
+    .text-sm {
+        font-size: 0.875rem;
+    }
+
+    .text-xs {
+        font-size: 0.75rem;
+    }
+
+    .text-secondary {
+        color: var(--text-secondary);
+    }
+
+    .text-muted {
+        color: var(--text-muted);
+    }
+
+    .text-primary {
+        color: var(--primary-color);
+    }
+
+    .text-success {
+        color: var(--success-color);
+    }
+
+    .text-warning {
+        color: var(--warning-color);
+    }
+
+    .text-error {
+        color: var(--error-color);
+    }
+
+    .text-info {
+        color: var(--info-color);
+    }
+
+    .font-medium {
+        font-weight: 500;
+    }
+
+    .w-2 {
+        width: 0.5rem;
+    }
+
+    .h-2 {
+        height: 0.5rem;
+    }
+
+    .flex-shrink-0 {
+        flex-shrink: 0;
+    }
+
+    .rounded-full {
+        border-radius: 9999px;
+    }
+
+    .bg-success {
+        background-color: var(--success-color);
+    }
+
+    .bg-info {
+        background-color: var(--info-color);
+    }
+
+    .bg-warning {
+        background-color: var(--warning-color);
+    }
+
+    .text-2xl {
+        font-size: 1.5rem;
+    }
+
+    /* LMS Widget Styles */
+    .lms-stat-card {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+        background-color: var(--bg-secondary);
+        border-radius: var(--border-radius);
+        transition: var(--smooth-hover);
+    }
+
+    .lms-stat-card:hover {
+        background-color: var(--bg-tertiary);
+        transform: translateY(-2px);
+    }
+
+    .lms-stat-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.125rem;
+        flex-shrink: 0;
+        background-color: rgba(59, 130, 246, 0.1);
+        color: var(--primary-color);
+    }
+    
+    /* Calendar Icon Styles */
+    .calendar-icon {
+        width: 50px;
+        height: 56px;
+        background-color: var(--bg-primary);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex-shrink: 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .calendar-month {
+        background-color: var(--primary-color);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 3px 0;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .calendar-day {
+        color: var(--text-primary);
+        font-size: 1.35rem;
+        font-weight: 700;
+        text-align: center;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .event-card-new:hover {
+        transform: translateY(-2px);
+        background: rgba(255,255,255,0.02);
+    }
+
+    .lms-stat-content {
+        flex: 1;
+    }
+
+    .lms-stat-number {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 0.25rem 0;
+        color: var(--text-primary);
+    }
+
+    .lms-stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0;
+    }
+
+    .urgent-assignments {
+        background-color: rgba(239, 68, 68, 0.05);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: var(--border-radius);
+        padding: 1rem;
+    }
+
+    .urgent-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--error-color);
+        margin: 0 0 0.75rem 0;
+    }
+
+    .urgent-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .urgent-assignment {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        background-color: var(--bg-primary);
+        border-radius: 4px;
+        border-left: 3px solid var(--error-color);
+    }
+
+    .urgent-assignment-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+
+    .urgent-assignment-title {
+        font-weight: 500;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+    }
+
+    .urgent-assignment-course {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
+
+    .urgent-assignment-deadline {
+        text-align: right;
+    }
+
+    .deadline-text {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--error-color);
+    }
+
+    .lms-quick-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    /* LMS Setup Prompt Styles */
+    .lms-setup-prompt {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(16, 185, 129, 0.05) 100%);
+        border: 1px solid rgba(37, 99, 235, 0.2);
+    }
+
+    .lms-setup-content {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .lms-setup-icon {
+        font-size: 3rem;
+        color: var(--primary-color);
+        flex-shrink: 0;
+    }
+
+    .lms-setup-info {
+        flex: 1;
+    }
+
+    .lms-setup-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.5rem 0;
+    }
+
+    .lms-setup-description {
+        color: var(--text-secondary);
+        margin: 0 0 1rem 0;
+        line-height: 1.5;
+    }
+
+    .lms-setup-benefits {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .benefit-item {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        background: var(--bg-secondary);
+        padding: 0.25rem 0.75rem;
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-color);
+    }
+
+    .lms-setup-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    /* Events Grid Styles */
+    .events-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .event-card {
+        background-color: var(--bg-secondary);
+        padding: 1.5rem;
+        border-radius: var(--border-radius);
+        text-align: center;
+        transition: var(--smooth-hover);
+        border: 1px solid var(--border-color);
+    }
+
+    .event-card:hover {
+        background-color: var(--bg-tertiary);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .event-icon {
+        font-size: 2rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .event-title {
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    /* Responsive adjustments for LMS widgets */
+    @media (max-width: 768px) {
+        .lms-quick-actions {
+            flex-direction: column;
+        }
+
+        .lms-quick-actions .btn {
+            width: 100%;
+        }
+
+        .urgent-assignment {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .urgent-assignment-deadline {
+            text-align: left;
+        }
+
+        .lms-setup-content {
+            flex-direction: column;
+            text-align: center;
+            gap: 1rem;
+        }
+
+        .lms-setup-actions {
+            width: 100%;
+        }
+
+        .lms-setup-actions .btn {
+            width: 100%;
+        }
+
+        .lms-setup-benefits {
+            justify-content: center;
+        }
+
+        .events-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Set today's date
+        const today = new Date();
+        const options = {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        };
+
+        // Update any date placeholders
+        const dateElements = document.querySelectorAll('[data-today]');
+        dateElements.forEach(el => {
+            el.textContent = today.toLocaleDateString('en-US', options);
+        });
+    });
+
+    function dismissLMSPrompt() {
+        const prompt = document.querySelector('.lms-setup-prompt');
+        if (prompt) {
+            prompt.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            prompt.style.opacity = '0';
+            prompt.style.transform = 'translateY(-10px)';
+
+            setTimeout(() => {
+                prompt.style.display = 'none';
+            }, 300);
+
+            // Store dismissal in localStorage to remember user preference
+            localStorage.setItem('lms_setup_dismissed', 'true');
+        }
+    }
+
+    // Check if user previously dismissed the prompt
+    document.addEventListener('DOMContentLoaded', function () {
+        // Force Refresh Unified Overlay Handler
+        const refreshBtn = document.getElementById('refreshDataToggle');
+        const refreshIcon = document.getElementById('refreshDataIcon');
+        const overlay = document.getElementById('liveRefreshOverlay');
+        const overlayBar = document.getElementById('overlayProgressBar');
+        const overlayStatus = document.getElementById('overlayStatusText');
+        const overlayPct = document.getElementById('overlayPercentage');
+        const overlaySpinner = document.getElementById('overlaySpinner');
+        const overlayDismiss = document.getElementById('overlayDismissBtn');
+
+        let refreshPollTimer = null;
+        let refreshPollCount = 0;
+        const STEPS = ['auth', 'profile', 'timetable', 'attendance', 'gpa'];
+
+        function updateStep(step, state) {
+            const el = document.getElementById(`step-${step}`);
+            if (!el) return;
+            el.classList.remove('active', 'done', 'warning');
+            if (state === 'active') el.classList.add('active');
+            else if (state === 'done') el.classList.add('done');
+            else if (state === 'warning') el.classList.add('warning');
+        }
+
+        window.dismissRefreshOverlay = function() {
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 300);
+            }
+        };
+
+        function pollRefreshStatus() {
+            refreshPollCount++;
+            if (refreshPollCount > 15 && overlayDismiss) {
+                overlayDismiss.style.display = 'inline-block';
+            }
+
+            fetch('/api/sync/status')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data) return;
+                    const pct = Math.max(10, Math.min(100, data.progress || 10));
+                    if (overlayBar) overlayBar.style.width = `${pct}%`;
+                    if (overlayPct) overlayPct.textContent = `${pct}% Complete`;
+                    if (overlayStatus) {
+                        overlayStatus.textContent = data.sub_message || data.status_message || 'Connecting to university CMS...';
+                    }
+
+                    const completed = data.completed_steps || [];
+                    const failed = data.failed_steps || [];
+                    const current = data.current_step || 'auth';
+
+                    // Attendance and CSP hours map to step-attendance
+                    const isAttendanceDone = completed.includes('attendance') && (completed.includes('community_service') || current === 'gpa');
+                    const isAttendanceActive = (current === 'attendance' || current === 'community_service') && data.is_syncing;
+                    const isAttendanceFailed = failed.includes('attendance') || failed.includes('community_service');
+
+                    STEPS.forEach(s => {
+                        if (s === 'attendance') {
+                            if (isAttendanceDone) updateStep(s, 'done');
+                            else if (isAttendanceFailed) updateStep(s, 'warning');
+                            else if (isAttendanceActive) updateStep(s, 'active');
+                            else updateStep(s, 'waiting');
+                        } else {
+                            if (completed.includes(s)) updateStep(s, 'done');
+                            else if (failed.includes(s)) updateStep(s, 'warning');
+                            else if (s === current && data.is_syncing) updateStep(s, 'active');
+                            else updateStep(s, 'waiting');
+                        }
+                    });
+
+                    if (!data.is_syncing) {
+                        clearInterval(refreshPollTimer);
+                        refreshPollTimer = null;
+                        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+                        if (refreshBtn) {
+                            refreshBtn.style.pointerEvents = 'auto';
+                            refreshBtn.style.opacity = '1';
+                        }
+
+                        if (overlaySpinner) {
+                            overlaySpinner.className = 'fas fa-check';
+                            overlaySpinner.style.color = 'var(--success-color)';
+                        }
+                        if (overlayStatus) overlayStatus.textContent = 'All records refreshed successfully!';
+                        if (overlayBar) overlayBar.style.width = '100%';
+                        STEPS.forEach(s => updateStep(s, 'done'));
+
+                        // Graceful melt away blur, then refresh
+                        setTimeout(() => {
+                            if (overlay) overlay.style.opacity = '0';
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 350);
+                        }, 900);
+                    }
+                })
+                .catch(err => console.warn('Refresh status error:', err));
+        }
+
+        function startLiveRefresh() {
+            refreshPollCount = 0;
+            if (overlay) {
+                overlay.style.display = 'flex';
+                overlay.style.opacity = '1';
+            }
+            if (overlaySpinner) {
+                overlaySpinner.className = 'fas fa-sync-alt';
+                overlaySpinner.style.color = '#60a5fa';
+            }
+            if (overlayBar) overlayBar.style.width = '10%';
+            if (overlayStatus) overlayStatus.textContent = 'Connecting to CMS...';
+            STEPS.forEach(s => updateStep(s, s === 'auth' ? 'active' : 'waiting'));
+
+            if (refreshIcon) refreshIcon.classList.add('fa-spin');
+            if (refreshBtn) {
+                refreshBtn.style.pointerEvents = 'none';
+                refreshBtn.style.opacity = '0.6';
+            }
+
+            if (refreshPollTimer) clearInterval(refreshPollTimer);
+            pollRefreshStatus();
+            refreshPollTimer = setInterval(pollRefreshStatus, 1000);
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                startLiveRefresh();
+                fetch('/refresh-all-data?format=json')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.error) {
+                            if (overlayStatus) overlayStatus.textContent = data.error;
+                            if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+                            if (refreshBtn) {
+                                refreshBtn.style.pointerEvents = 'auto';
+                                refreshBtn.style.opacity = '1';
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            });
+        }
+
+        // If background sync was active on load, display banner and auto-poll
+        {% if is_syncing %}
+        startLiveRefresh();
+        {% endif %}
+
+        const dismissed = localStorage.getItem('lms_setup_dismissed');
+        if (dismissed === 'true') {
+            const prompt = document.querySelector('.lms-setup-prompt');
+            if (prompt) {
+                prompt.style.display = 'none';
+            }
+        }
+    
+    // Number count-up animation
+    const countUpElements = document.querySelectorAll('.count-up');
+    
+    // Check for reduced motion
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!prefersReducedMotion) {
+        countUpElements.forEach(el => {
+            const targetStr = el.getAttribute('data-value');
+            if (!targetStr || targetStr.trim() === '' || targetStr.trim() === 'None' || isNaN(parseFloat(targetStr))) {
+                el.textContent = targetStr || '0';
+                return;
+            }
+            
+            const target = parseFloat(targetStr);
+            const decimals = parseInt(el.getAttribute('data-decimals') || 0);
+            const duration = 1000; // 1 second duration
+            const startTime = performance.now();
+            
+            function updateCount(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ease out expo curve for snappy finish
+                const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const currentVal = target * easeOutExpo;
+                
+                el.textContent = currentVal.toFixed(decimals);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(updateCount);
+                } else {
+                    el.textContent = target.toFixed(decimals);
+                }
+            }
+            
+            // Add a small delay to sync with the CSS staggered entrance
+            setTimeout(() => {
+                requestAnimationFrame(updateCount);
+            }, 300);
+        });
+    } else {
+        // Fallback for reduced motion
+        countUpElements.forEach(el => {
+            const targetStr = el.getAttribute('data-value');
+            const decimals = parseInt(el.getAttribute('data-decimals') || 0);
+            if (targetStr && !isNaN(parseFloat(targetStr))) {
+                el.textContent = parseFloat(targetStr).toFixed(decimals);
+            } else {
+                el.textContent = targetStr || '0';
+            }
+        });
+    }
+    
+    });
+</script>
+{% endblock %}

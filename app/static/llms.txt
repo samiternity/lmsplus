@@ -1,0 +1,23 @@
+# LMS+ (LMS Plus)
+
+LMS+ is a blazing-fast, modern web portal alternative for Bahria University students. It replaces the outdated official Bahria LMS and Bahria CMS interfaces.
+
+## Features
+- **Speed and Reliability:** Built for instant access to student data.
+- **Unified Dashboard:** Track attendance, assignments, timetable, and community service (CSP) in one place.
+- **Deadline Monitor:** Real-time tracking of urgent and missed assignments.
+- **Live Attendance:** Direct sync from Bahria CMS to track class absences and safe limits.
+- **GPA Calculator:** Live academic results and GPA math.
+- **1-Click Downloads:** Download a full semester of course materials in one ZIP.
+- **Discord Integration:** Get deadline warnings and notifications via Discord pings.
+
+## Links
+- **Home:** https://lmsplus.xyz/
+- **Login:** https://lmsplus.xyz/auth/login
+- **Community:** https://discord.gg/DVUq7gaM3E
+
+## Category
+Educational Application, Student Portal, Productivity Tool
+
+## Target Audience
+Bahria University students looking for a better way to manage their academic data.

@@ -1,0 +1,304 @@
+<!-- LMS Notifications System -->
+<div id="lms-notifications-container" class="lms-notifications-container" style="display: none;">
+    <div class="notifications-header">
+        <h5><i class="fas fa-bell me-2"></i>LMS Notifications</h5>
+        <div class="header-actions">
+            <button class="btn btn-sm btn-outline-secondary me-2" onclick="lmsNotifications.loadNotifications()" title="Refresh">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="lmsNotifications.clearAll()" title="Clear All">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+    <div class="notifications-list" id="notifications-list">
+        <!-- Notifications will be dynamically loaded here -->
+    </div>
+    <div class="notifications-footer" style="display: none;">
+        <small class="text-muted">
+            <i class="fas fa-info-circle me-1"></i>
+            Notifications auto-refresh every 30 seconds
+        </small>
+    </div>
+</div>
+
+<!-- Notification Toggle Button -->
+<div class="notification-toggle" id="notification-toggle">
+    <button class="btn btn-primary position-relative" onclick="toggleNotifications()" title="Toggle Notifications">
+        <i class="fas fa-bell"></i>
+        <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+    </button>
+</div>
+
+<!-- Progress Toast Container -->
+<div class="toast-container position-fixed top-0 end-0 p-3" id="progress-toast-container">
+    <!-- Progress toasts will be added here -->
+</div>
+
+<!-- Status Messages Container -->
+<div class="status-messages-container" id="status-messages-container">
+    <!-- Status messages will be added here -->
+</div>
+
+<script>
+// Toggle notifications visibility
+function toggleNotifications() {
+    const container = document.getElementById('lms-notifications-container');
+    const isVisible = container.style.display !== 'none';
+    
+    if (isVisible) {
+        container.style.display = 'none';
+        localStorage.setItem('lms-notifications-visible', 'false');
+    } else {
+        container.style.display = 'block';
+        localStorage.setItem('lms-notifications-visible', 'true');
+        // Load notifications when showing
+        if (window.lmsNotifications) {
+            lmsNotifications.loadNotifications();
+        }
+    }
+}
+
+// Initialize notifications visibility from localStorage
+document.addEventListener('DOMContentLoaded', function() {
+    const shouldShow = localStorage.getItem('lms-notifications-visible') === 'true';
+    const container = document.getElementById('lms-notifications-container');
+    
+    if (shouldShow) {
+        container.style.display = 'block';
+    }
+    
+    // Show footer if there are notifications
+    const updateFooterVisibility = () => {
+        const footer = container.querySelector('.notifications-footer');
+        const list = container.querySelector('.notifications-list');
+        const hasNotifications = list && list.children.length > 0;
+        
+        if (footer) {
+            footer.style.display = hasNotifications ? 'block' : 'none';
+        }
+    };
+    
+    // Observe changes to notifications list
+    if (container) {
+        const observer = new MutationObserver(updateFooterVisibility);
+        const list = container.querySelector('.notifications-list');
+        if (list) {
+            observer.observe(list, { childList: true });
+        }
+    }
+});
+
+// Progress Toast Helper
+function createProgressToast(id, title, message) {
+    const toastContainer = document.getElementById('progress-toast-container');
+    if (!toastContainer) return null;
+    
+    const toastElement = document.createElement('div');
+    toastElement.className = 'toast';
+    toastElement.id = `progress-toast-${id}`;
+    toastElement.setAttribute('role', 'alert');
+    toastElement.setAttribute('aria-live', 'assertive');
+    toastElement.setAttribute('aria-atomic', 'true');
+    
+    toastElement.innerHTML = `
+        <div class="toast-header">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            <div class="progress-message">${message}</div>
+            <div class="progress mt-2" style="height: 6px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" 
+                     style="width: 0%"
+                     aria-valuenow="0" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toastElement);
+    
+    // Show toast
+    if (window.bootstrap) {
+        const toast = new bootstrap.Toast(toastElement, { autohide: false });
+        toast.show();
+    }
+    
+    return toastElement;
+}
+
+// Update Progress Toast
+function updateProgressToast(id, progress, message) {
+    const toastElement = document.getElementById(`progress-toast-${id}`);
+    if (!toastElement) return;
+    
+    const progressBar = toastElement.querySelector('.progress-bar');
+    const messageElement = toastElement.querySelector('.progress-message');
+    
+    if (progressBar) {
+        progressBar.style.width = `${progress}%`;
+        progressBar.setAttribute('aria-valuenow', progress);
+    }
+    
+    if (messageElement && message) {
+        messageElement.textContent = message;
+    }
+}
+
+// Complete Progress Toast
+function completeProgressToast(id, success, finalMessage) {
+    const toastElement = document.getElementById(`progress-toast-${id}`);
+    if (!toastElement) return;
+    
+    const spinner = toastElement.querySelector('.spinner-border');
+    const progressBar = toastElement.querySelector('.progress-bar');
+    const messageElement = toastElement.querySelector('.progress-message');
+    
+    // Remove spinner
+    if (spinner) {
+        spinner.remove();
+    }
+    
+    // Update progress bar
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        progressBar.classList.remove('progress-bar-striped', 'progress-bar-animated');
+        progressBar.classList.add(success ? 'bg-success' : 'bg-danger');
+    }
+    
+    // Update message
+    if (messageElement && finalMessage) {
+        messageElement.textContent = finalMessage;
+    }
+    
+    // Add success/error icon to header
+    const header = toastElement.querySelector('.toast-header strong');
+    if (header) {
+        const icon = success ? 
+            '<i class="fas fa-check-circle text-success me-2"></i>' : 
+            '<i class="fas fa-exclamation-circle text-danger me-2"></i>';
+        header.innerHTML = icon + header.textContent;
+    }
+    
+    // Auto-hide after completion
+    setTimeout(() => {
+        if (window.bootstrap) {
+            const toast = bootstrap.Toast.getInstance(toastElement);
+            if (toast) {
+                toast.hide();
+            }
+        }
+        setTimeout(() => toastElement.remove(), 500);
+    }, success ? 3000 : 5000);
+}
+
+// Status Message Helper
+function showStatusMessage(type, message, duration = 5000) {
+    const container = document.getElementById('status-messages-container');
+    if (!container) return;
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `alert alert-${type} alert-dismissible fade show status-message`;
+    messageElement.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    container.appendChild(messageElement);
+    
+    // Auto-remove after duration
+    if (duration > 0) {
+        setTimeout(() => {
+            if (messageElement.parentNode) {
+                messageElement.classList.remove('show');
+                setTimeout(() => messageElement.remove(), 150);
+            }
+        }, duration);
+    }
+}
+
+// Global event listeners for LMS operations
+document.addEventListener('lms:operation:start', function(event) {
+    const { operation, title, message } = event.detail;
+    createProgressToast(operation, title, message);
+});
+
+document.addEventListener('lms:operation:progress', function(event) {
+    const { operation, progress, message } = event.detail;
+    updateProgressToast(operation, progress, message);
+});
+
+document.addEventListener('lms:operation:complete', function(event) {
+    const { operation, success, message } = event.detail;
+    completeProgressToast(operation, success, message);
+});
+
+document.addEventListener('lms:status:message', function(event) {
+    const { type, message, duration } = event.detail;
+    showStatusMessage(type, message, duration);
+});
+</script>
+
+<style>
+.notification-toggle {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1040;
+}
+
+.notification-toggle .btn {
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+.notification-toggle .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.status-messages-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1045;
+    min-width: 300px;
+    max-width: 500px;
+}
+
+.status-message {
+    margin-bottom: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+@media (max-width: 768px) {
+    .notification-toggle {
+        bottom: 15px;
+        right: 15px;
+    }
+    
+    .notification-toggle .btn {
+        width: 45px;
+        height: 45px;
+    }
+    
+    .status-messages-container {
+        left: 10px;
+        right: 10px;
+        transform: none;
+        min-width: auto;
+        max-width: none;
+    }
+}
+</style>

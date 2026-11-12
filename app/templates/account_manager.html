@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Accounts | LMS+{% endblock %}
+
+{% block extra_css %}
+<style>
+.account-manager {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.account-card {
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.account-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.account-card.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color)10, var(--bg-primary));
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.2);
+}
+
+.account-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.account-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.account-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.account-details h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.account-details p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.account-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-active {
+    background: var(--success-color);
+}
+
+.status-inactive {
+    background: var(--text-muted);
+}
+
+.account-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border-radius: var(--border-radius);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.btn-outline:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.btn-danger {
+    background: var(--error-color);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.add-account-card {
+    border: 2px dashed var(--border-color);
+    background: var(--bg-secondary);
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.add-account-card:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: var(--bg-primary);
+}
+
+.add-account-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+}
+
+.account-switcher {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    padding: 1rem;
+    min-width: 280px;
+    z-index: 1000;
+    display: none;
+}
+
+.switcher-header {
+    text-align: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.switcher-account {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 0.5rem;
+}
+
+.switcher-account:hover {
+    background: var(--bg-secondary);
+}
+
+.switcher-account.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.switcher-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.switcher-account.active .switcher-avatar {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.switcher-info h4 {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.switcher-info p {
+    margin: 0;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.switcher-actions {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.switcher-actions .btn {
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .account-manager {
+        margin: 1rem;
+        padding: 0;
+    }
+    
+    .account-switcher {
+        right: 10px;
+        left: 10px;
+        min-width: auto;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="account-manager">
+
+
+    <!-- Current Accounts -->
+    {# SINGLE ACCOUNT MODE #}
+    {% if current_user.cms_account %}
+    <div class="accounts-list">
+        <div class="account-card active">
+            <div class="account-header">
+                <div class="account-info">
+                    <div class="account-avatar">
+                        {{ current_user.cms_account.cms_username[:2].upper() }}
+                    </div>
+                    <div class="account-details">
+                        <h3>{{ current_user.cms_account.cms_username }}</h3>
+                        <p>Enrollment Number</p>
+                    </div>
+                </div>
+                <div class="account-status">
+                    <div class="status-indicator status-active"></div>
+                    <span>Active</span>
+                </div>
+            </div>
+            
+            <div class="account-actions">
+                <span class="btn btn-sm btn-outline" style="cursor: default; opacity: 0.6;">
+                    <i class="fas fa-check"></i> Active Account
+                </span>
+                {% endif %}
+                
+                {% if current_user.cms_accounts|length > 1 %}
+                <button class="btn btn-sm btn-danger" onclick="removeAccount('{{ account_id }}')">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="accounts-list">
+        <p style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+            No CMS account found. Please log in with your CMS credentials.
+        </p>
+    </div>
+    {% endif %}
+    
+    {# MULTI-ACCOUNT MODE (disabled)
+    {% set active_account = current_user.get_active_account() %}
+    {% set active_id = active_account.account_id if active_account else current_user.active_account_id %}
+    <div class="accounts-list">
+        {% for account_id, account in current_user.cms_accounts.items() %}
+        <div class="account-card {% if account_id == active_id %}active{% endif %}" 
+             onclick="switchAccount('{{ account_id }}')">
+            <div class="account-header">
+                <div class="account-info">
+                    <div class="account-avatar">
+                        {{ account.cms_username[:2].upper() }}
+                    </div>
+                    <div class="account-details">
+                        <h3>{{ account.cms_username }}</h3>
+                        <p>Enrollment Number</p>
+                    </div>
+                </div>
+                <div class="account-status">
+                    <div class="status-indicator {% if account_id == active_id %}status-active{% else %}status-inactive{% endif %}"></div>
+                    <span>{% if account_id == active_id %}Active{% else %}Inactive{% endif %}</span>
+                </div>
+            </div>
+            
+            <div class="account-actions" onclick="event.stopPropagation()">
+                {% if account_id != active_id %}
+                    <button class="btn btn-sm btn-primary" onclick="switchAccount('{{ account_id }}')">
+                        <i class="fas fa-exchange-alt"></i> Switch To
+                    </button>
+                {% else %}
+                    <span class="btn btn-sm btn-outline" style="cursor: default; opacity: 0.6;">
+                        <i class="fas fa-check"></i> Active Account
+                    </span>
+                {% endif %}
+                
+                {% if current_user.cms_accounts|length > 1 %}
+                <button class="btn btn-sm btn-danger" onclick="removeAccount('{{ account_id }}')">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="account-card add-account-card" onclick="addNewAccount()">
+            <div class="add-account-icon">
+                <i class="fas fa-plus-circle"></i>
+            </div>
+            <h3>Add New CMS Account</h3>
+            <p>Connect another CMS account to your profile</p>
+        </div>
+    </div>
+    #}
+</div>
+
+{# MULTI-ACCOUNT: Account Switcher Dropdown (disabled)
+<div id="accountSwitcher" class="account-switcher">
+    <div class="switcher-header">
+        <h4>Switch Account</h4>
+    </div>
+    
+    <div class="switcher-accounts">
+        {% for account_id, account in current_user.cms_accounts.items() %}
+        <div class="switcher-account {% if account_id == active_id %}active{% endif %}" 
+             onclick="switchAccount('{{ account_id }}')">
+            <div class="switcher-avatar">
+                {{ account.cms_username[:2].upper() }}
+            </div>
+            <div class="switcher-info">
+                <h4>{{ account.cms_username }}</h4>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="switcher-actions">
+        <button class="btn btn-primary btn-sm" onclick="addNewAccount()">
+            <i class="fas fa-plus"></i> Add Account
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="window.location.href='{{ url_for('account.manage_accounts') }}'">
+            <i class="fas fa-cog"></i> Manage Accounts
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchAccount(accountId) {
+    fetch('{{ url_for("auth.switch_account") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            'account_id': accountId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to switch account');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while switching accounts');
+    });
+}
+
+function removeAccount(accountId) {
+    if (confirm('Are you sure you want to remove this CMS account? All associated data will be deleted.')) {
+        fetch('{{ url_for("auth.remove_account") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                'account_id': accountId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert(data.error || 'Failed to remove account');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while removing the account');
+        });
+    }
+}
+
+
+
+function addNewAccount() {
+    window.location.href = '{{ url_for("account.add_account") }}';
+}
+
+// Toggle account switcher dropdown
+function toggleAccountSwitcher() {
+    const switcher = document.getElementById('accountSwitcher');
+    switcher.style.display = switcher.style.display === 'none' ? 'block' : 'none';
+}
+
+// Close switcher when clicking outside
+document.addEventListener('click', function(event) {
+    const switcher = document.getElementById('accountSwitcher');
+    const trigger = document.querySelector('[onclick="toggleAccountSwitcher()"]');
+    
+    if (switcher && !switcher.contains(event.target) && event.target !== trigger) {
+        switcher.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

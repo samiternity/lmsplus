@@ -1,0 +1,164 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+jobs:
+  deploy-production:
+    name: Deploy to Production Environment
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PRODUCTION }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate production MCP configuration
+        id: mcp
+        env:
+          ENABLE_MCP: ${{ vars.PROD_LMS_MCP_ENABLED }}
+          DOWNLOAD_KEY: ${{ secrets.PROD_LMS_MCP_DOWNLOAD_KEY }}
+          PROXY_HOSTS: ${{ vars.PROD_LMS_MCP_PROXY_HOSTS }}
+          WORKER_URL: ${{ vars.PROD_LMS_MCP_WORKER_URL }}
+        run: |
+          if [[ "$ENABLE_MCP" != true ]]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$DOWNLOAD_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo 'Production MCP requires a dedicated 32-byte key.' >&2
+            exit 1
+          fi
+          if [[ ! "$WORKER_URL" =~ ^https://[a-z0-9.-]+\.workers\.dev$ || "$WORKER_URL" == https://unitrack-mcp-testing.* ]]; then
+            echo 'Set PROD_LMS_MCP_WORKER_URL to the dedicated production Worker origin on workers.dev.' >&2
+            exit 1
+          fi
+          read -r -a proxy_hosts <<< "$PROXY_HOSTS"
+          if (( ${#proxy_hosts[@]} == 0 )); then
+            echo 'Set PROD_LMS_MCP_PROXY_HOSTS to the production Cloud Run hostnames.' >&2
+            exit 1
+          fi
+          for host in "${proxy_hosts[@]}"; do
+            if [[ ! "$host" =~ ^[a-z0-9.-]+\.run\.app$ || "$host" == university-portal-test-* ]]; then
+              echo 'Use space-separated production Cloud Run hostnames.' >&2
+              exit 1
+            fi
+          done
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
+      - name: Check required proxy configuration
+        env:
+          WORKER_ORIGIN: ${{ vars.PROD_LMS_WORKER_ORIGIN }}
+          WORKER_KEY: ${{ secrets.PROD_LMS_WORKER_PROXY_KEY }}
+          FILE_KEY: ${{ secrets.DOWNLOAD_ENCRYPTION_KEY }}
+        run: |
+          if [[ ! "$WORKER_ORIGIN" =~ ^https://[^/[:space:]?#@]+/?$ || ! "$WORKER_KEY" =~ ^[a-fA-F0-9]{64}$ || ! "$FILE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo 'Configure the Worker HTTPS origin and both 32-byte hexadecimal proxy and file keys before deploying.' >&2
+            exit 1
+          fi
+
+      - name: Build and Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          project_id: unitrack-61e76
+          service: university-portal
+          region: us-central1
+          source: .
+          flags: >-
+            --allow-unauthenticated
+            --min-instances=0
+            ${{ steps.mcp.outputs.enabled == 'true' && '--memory=1Gi --add-volume=name=mcp-ram,type=in-memory,size-limit=128Mi --add-volume-mount=volume=mcp-ram,mount-path=/mcp-ram' || '' }}
+          env_vars: |
+            APP_ENV=production
+            LMS_WORKER_ORIGIN=${{ vars.PROD_LMS_WORKER_ORIGIN }}
+            LMS_WORKER_PROXY_KEY=${{ secrets.PROD_LMS_WORKER_PROXY_KEY }}
+            LMS_SUPABASE_ORIGIN=${{ vars.PROD_LMS_SUPABASE_ORIGIN }}
+            LMS_SUPABASE_PROXY_KEY=${{ secrets.PROD_LMS_SUPABASE_PROXY_KEY }}
+            LMS_NETLIFY_ORIGIN=${{ vars.PROD_LMS_NETLIFY_ORIGIN }}
+            LMS_NETLIFY_PROXY_KEY=${{ secrets.PROD_LMS_NETLIFY_PROXY_KEY }}
+            LMS_VERCEL_ORIGIN=${{ vars.PROD_LMS_VERCEL_ORIGIN }}
+            LMS_VERCEL_PROXY_KEY=${{ secrets.PROD_LMS_VERCEL_PROXY_KEY }}
+            LMS_VAL_TOWN_ORIGIN=${{ vars.PROD_LMS_VAL_TOWN_ORIGIN }}
+            LMS_VAL_TOWN_PROXY_KEY=${{ secrets.PROD_LMS_VAL_TOWN_PROXY_KEY }}
+            ZIP_NATIVE_DOWNLOADS=true
+            GA4_MEASUREMENT_ID=${{ secrets.PROD_GA4_MEASUREMENT_ID }}
+            GA4_USER_ID_SECRET=${{ secrets.PROD_GA4_USER_ID_SECRET }}
+            USE_FIRESTORE=true
+            COST_SAFETY_ENABLED=true
+            FIREBASE_PROJECT_ID=unitrack-61e76
+            FIREBASE_API_KEY=${{ secrets.PROD_FIREBASE_API_KEY }}
+            FIREBASE_AUTH_DOMAIN=unitrack-61e76.firebaseapp.com
+            FIREBASE_STORAGE_BUCKET=unitrack-61e76.appspot.com
+            FIREBASE_MESSAGING_SENDER_ID=584742622269
+            FIREBASE_APP_ID=${{ secrets.PROD_FIREBASE_APP_ID }}
+            FIREBASE_VAPID_KEY=${{ secrets.PROD_FIREBASE_VAPID_KEY }}
+            APP_URL=https://lmsplus.xyz
+            LMS_MCP_ENABLED=${{ steps.mcp.outputs.enabled }}
+            LMS_MCP_PROBE_ENABLED=false
+            LMS_MCP_WORKER_URL=${{ vars.PROD_LMS_MCP_WORKER_URL }}
+            LMS_MCP_DOWNLOAD_KEY=${{ secrets.PROD_LMS_MCP_DOWNLOAD_KEY }}
+            LMS_MCP_PROXY_HOSTS=${{ vars.PROD_LMS_MCP_PROXY_HOSTS }}
+            LMS_MCP_RAM_DIR=/mcp-ram
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            SCHEDULER_SECRET=${{ secrets.SCHEDULER_SECRET }}
+            DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+            DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}
+            DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
+            DISCORD_PUBLIC_KEY=${{ secrets.DISCORD_PUBLIC_KEY }}
+            DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+            DISCORD_LOG_WEBHOOK_URL=${{ secrets.DISCORD_LOG_WEBHOOK_URL }}
+            DISCORD_AUTHORIZED_ROLE_ID=${{ secrets.DISCORD_AUTHORIZED_ROLE_ID }}
+            DOWNLOAD_ENCRYPTION_KEY=${{ secrets.DOWNLOAD_ENCRYPTION_KEY }}
+            TURNSTILE_SITE_KEY=${{ secrets.TURNSTILE_SITE_KEY }}
+            TURNSTILE_SECRET_KEY=${{ secrets.TURNSTILE_SECRET_KEY }}
+
+      - name: Route traffic to the deployed revision
+        run: gcloud run services update-traffic university-portal --project unitrack-61e76 --region us-central1 --to-latest
+
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY_PRODUCTION }}
+          projectId: unitrack-61e76
+          target: production
+          channelId: live
+
+      - name: Verify production MCP entry point
+        if: steps.mcp.outputs.enabled == 'true'
+        run: |
+          # Verify the production Firebase rewrite independently of Cloudflare's bot checks.
+          hosting_origin=https://unitrack-61e76.web.app
+          status=$(curl --silent --show-error --max-time 15 --retry 3 --output /dev/null --write-out '%{http_code}' \
+            -H 'Accept: application/json, text/event-stream' "$hosting_origin/mcp")
+          if [[ "$status" != 401 ]]; then
+            echo "Expected an OAuth challenge through production Firebase Hosting, got HTTP $status." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 15 --retry 3 \
+            "$hosting_origin/.well-known/oauth-protected-resource/mcp" |
+            jq -e '.resource == "https://lmsplus.xyz/mcp" and .authorization_servers == ["https://lmsplus.xyz"]' >/dev/null
+
+      - name: Check public MCP URL from GitHub runner
+        if: steps.mcp.outputs.enabled == 'true'
+        run: |
+          headers=$(mktemp)
+          trap 'rm -f "$headers"' EXIT
+          status=$(curl --silent --show-error --max-time 15 --output /dev/null --dump-header "$headers" \
+            --write-out '%{http_code}' -H 'Accept: application/json, text/event-stream' https://lmsplus.xyz/mcp) || status=unreachable
+          if [[ "$status" != 401 ]]; then
+            echo "::warning::The GitHub runner got $status from the public MCP URL. The Firebase backend check passed. Verify the public URL from an MCP client."
+            awk 'tolower($0) ~ /^(server|cf-ray|cf-mitigated):/ {print}' "$headers"
+          fi

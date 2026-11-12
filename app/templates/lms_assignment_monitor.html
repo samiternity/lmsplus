@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Assignment Monitor | LMS+{% endblock %}
+
+{% block header_actions %}
+<div class="assignments-age-indicator" id="assignmentsAgeIndicator">
+    <i class="far fa-clock assignments-age-icon" id="assignmentsAgeIcon"></i>
+    <span class="assignments-age-text" id="assignmentsAgeText">Ready</span>
+</div>
+<div class="refresh-data-widget" style="margin-right: 1rem;">
+    <button class="refresh-data-toggle" onclick="refreshAssignments()" id="refreshDataToggle" title="Refresh Assignment Data" aria-label="Refresh Assignment Data">
+        <i class="fas fa-sync-alt refresh-icon"></i>
+    </button>
+</div>
+<style>
+.assignments-age-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 140px;
+    height: 2.25rem;
+    margin-right: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    padding: 0 0.85rem;
+    border-radius: 2rem;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                color 0.25s ease,
+                box-shadow 0.25s ease;
+}
+
+.assignments-age-icon {
+    margin-right: 0.45rem;
+    font-size: 0.8rem;
+    opacity: 0.75;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease, opacity 0.2s ease;
+}
+
+/* In-Flight Syncing State */
+.assignments-age-indicator.is-syncing {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(30, 58, 138, 0.04) 100%);
+    color: var(--primary-color, #3b82f6);
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.15);
+}
+
+.assignments-age-indicator.is-syncing .assignments-age-icon {
+    color: var(--primary-color, #3b82f6);
+    opacity: 1;
+    animation: age-icon-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes age-icon-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.75; }
+    50% { transform: scale(1.18); opacity: 1; }
+}
+
+/* Success State */
+.assignments-age-indicator.is-success {
+    border-color: rgba(34, 197, 94, 0.45);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.14) 0%, rgba(34, 197, 94, 0.04) 100%);
+    color: #22c55e;
+    box-shadow: 0 1px 4px rgba(34, 197, 94, 0.15);
+}
+
+.assignments-age-indicator.is-success .assignments-age-icon {
+    color: #22c55e;
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+/* Error / Cooldown State */
+.assignments-age-indicator.is-error {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, rgba(239, 68, 68, 0.04) 100%);
+    color: #ef4444;
+    box-shadow: 0 1px 4px rgba(239, 68, 68, 0.15);
+}
+
+.assignments-age-indicator.is-error .assignments-age-icon {
+    color: #ef4444;
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .assignments-age-indicator.is-syncing .assignments-age-icon {
+        animation: none !important;
+    }
+}
+
+.refresh-data-toggle {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s ease, opacity 0.2s ease;
+    position: relative;
+    user-select: none;
+}
+
+.refresh-data-toggle:hover:not(.is-refreshing):not(:disabled) {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08)) !important;
+    transform: none !important;
+}
+
+.refresh-data-toggle .refresh-icon {
+    font-size: 1.1rem;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+    display: inline-block;
+    transform-origin: center center;
+}
+
+.refresh-data-toggle:hover:not(.is-refreshing):not(:disabled) .refresh-icon {
+    transform: rotate(180deg);
+}
+
+.refresh-data-toggle:active:not(.is-refreshing):not(:disabled) {
+    transform: scale(0.92);
+}
+
+.refresh-data-toggle.is-refreshing,
+.refresh-data-toggle:disabled {
+    cursor: not-allowed;
+    pointer-events: none;
+    background: transparent !important;
+    transform: none !important;
+    opacity: 0.9;
+}
+
+.refresh-data-toggle.is-refreshing .refresh-icon {
+    color: var(--primary-color, #3b82f6);
+    transform: none !important;
+    animation: clean-spin 0.9s linear infinite;
+}
+
+@keyframes clean-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="assignments-monitor-page">
+    {% if kill_switch_active %}
+    <div class="alert alert-danger mb-4" style="background-color: rgba(239, 68, 68, 0.1); border: 1px solid var(--error-color); color: var(--error-color); padding: 1rem; border-radius: var(--border-radius); display: flex; align-items: center; gap: 1rem;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 1.5rem;"></i>
+        <div>
+            <strong style="font-size: 1.1rem;">⚠️ Background Checks Paused: Free Tier Limit Reached</strong><br>
+            The automated attendance and assignment background checker has been temporarily halted to prevent Google Cloud billing charges. Your normal app usage is unaffected.
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not lms_connected %}
+    <div class="card mb-8">
+        <div class="card-body text-center">
+            <div class="text-6xl mb-4">🔗</div>
+            <h2 class="text-2xl mb-4">Connect Your LMS Account</h2>
+            <p class="text-secondary mb-6">Connect your Bahria University LMS credentials to access assignments, lecture notes, and more!</p>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">
+                <i class="fas fa-link"></i> Go to Dashboard
+            </a>
+        </div>
+    </div>
+    {% else %}
+
+    {% include 'components/discord_notice_banner.html' %}
+
+    <!-- Pending & Overdue Assignments Widget -->
+    <div class="monitor-widget-wrap">
+        {% include 'components/lms_pending_assignments_widget.html' %}
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.assignments-monitor-page {
+    width: 100%;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,15 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "user_dashboards",
+      "fieldPath": "attendance_snapshot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "user_dashboards",
+      "fieldPath": "assignments_snapshot",
+      "indexes": []
+    }
+  ]
+}

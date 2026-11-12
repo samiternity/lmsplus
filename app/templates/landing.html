@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LMS+ | The Modern Bahria LMS & CMS Alternative</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description"
+        content="A blazing-fast, modern alternative to Bahria LMS and Bahria CMS. LMS+ (LMS Plus) lets you track attendance, assignments, and your timetable effortlessly.">
+    <meta name="keywords"
+        content="cms bahria, lms bahria, bahria lms, bahria cms, lms+, lms plus, bahria lms+, bahria lms plus">
+    <meta name="author" content="LMS+">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="canonical" href="https://lmsplus.xyz/">
+
+    <!-- Open Graph / WhatsApp / LinkedIn / Discord / Meta -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lmsplus.xyz/">
+    <meta property="og:site_name" content="LMS+">
+    <meta property="og:title" content="LMS+ | The Modern Bahria LMS Alternative">
+    <meta property="og:description"
+        content="Skip the clutter. Track attendance, assignments, and timetable efficiently in one unified, blazing-fast dashboard.">
+    <meta property="og:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:secure_url" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="LMS+ Preview">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://lmsplus.xyz/">
+    <meta name="twitter:title" content="LMS+ | The Modern Bahria LMS Alternative">
+    <meta name="twitter:description"
+        content="Skip the clutter. Track attendance, assignments, and timetable efficiently in one unified, blazing-fast dashboard.">
+    <meta name="twitter:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=3">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=3">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}?v=3">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=30">
+
+    <!-- Scroll Animations -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Observer for standard elements
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('in-view');
+                    }
+                });
+            }, {
+                root: null,
+                threshold: 0.1,
+                rootMargin: "0px 0px -50px 0px"
+            });
+
+            // Dedicated observer for massive feature showcases
+            const showcaseObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('in-view');
+                    }
+                });
+            }, {
+                root: null,
+                threshold: 0.2,
+                rootMargin: "0px 0px -20% 0px"
+            });
+
+            document.querySelectorAll('.stagger-enter, .reveal-up, .reveal-blur, .reveal-mockup').forEach((el) => {
+                observer.observe(el);
+            });
+
+            
+            // Scroll-driven sticky text reveal
+            const revealSection = document.querySelector('.scroll-reveal-section');
+            const revealText = document.querySelector('.scroll-reveal-text');
+            const dynWord = document.querySelector('.reveal-dynamic-word');
+            const revealWords = ['deadline.', 'class.', 'news.'];
+            
+            if (revealSection && revealText && dynWord) {
+                // Initial style setup for gradient text
+                revealText.style.backgroundImage = `linear-gradient(to right, #ffffff 0%, #475569 0%)`;
+                revealText.style.webkitBackgroundClip = 'text';
+                revealText.style.webkitTextFillColor = 'transparent';
+                dynWord.style.webkitTextFillColor = '#3b82f6'; // Force blue word
+                
+                window.addEventListener('scroll', () => {
+                    const rect = revealSection.getBoundingClientRect();
+                    const maxScroll = rect.height - window.innerHeight;
+                    let progress = -rect.top / maxScroll;
+                    progress = Math.max(0, Math.min(1, progress));
+                    
+                    // Reveal text fill from 0 to 40% scroll
+                    let fillProgress = Math.min(1, progress / 0.4);
+                    revealText.style.backgroundImage = `linear-gradient(to right, #ffffff ${fillProgress * 100}%, #475569 ${fillProgress * 100}%)`;
+                    
+                    // Flip words from 40% to 100% scroll
+                    let wordProgress = Math.max(0, (progress - 0.4) / 0.6);
+                    let wordIndex = Math.min(revealWords.length - 1, Math.floor(wordProgress * revealWords.length));
+                    
+                    if (dynWord.dataset.currentIndex != wordIndex) {
+                        dynWord.style.transform = 'translateY(15px)';
+                        dynWord.style.opacity = '0';
+                        setTimeout(() => {
+                            dynWord.textContent = revealWords[wordIndex];
+                            dynWord.style.transform = 'translateY(0)';
+                            dynWord.style.opacity = '1';
+                        }, 200);
+                        dynWord.dataset.currentIndex = wordIndex;
+                    }
+                }, { passive: true });
+            }
+
+            document.querySelectorAll('.feature-showcase').forEach((el) => {
+                showcaseObserver.observe(el);
+            });
+        });
+    </script>
+
+    <!-- JSON-LD Schema for AI SEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "LMS+",
+          "url": "https://lmsplus.xyz/",
+          "applicationCategory": "EducationalApplication",
+          "operatingSystem": "Web",
+          "description": "A blazing-fast, modern alternative to Bahria LMS and Bahria CMS. Track attendance, assignments, and timetable efficiently.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "PKR"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Why build a modern Bahria student portal?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "We wanted a beautiful, smooth, and fast alternative to the outdated official interface. Built by students, for students, LMS+ (LMS Plus) is the ultimate Bahria LMS and Bahria CMS portal reimagined for 2026. Enjoy pure speed, a built-in GPA calculator, and no more constant CMS logouts."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is this a replacement for Bahria LMS?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "LMS+ is a third-party application built to enhance your experience. It acts as a powerful alternative interface for the official Bahria LMS and Bahria CMS, providing a faster and more intuitive way to manage your assignments and lectures."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does it sync with Bahria CMS?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "When you log in, LMS+ securely communicates with Bahria CMS to instantly fetch your attendance, timetable, and provisional results. Your credentials are never stored in plain text and are only used for secure authentication."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Are my credentials safe?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. We use industry-standard encryption for all data transfers. Your credentials are encrypted and only used to interact with the official portal on your behalf."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+</head>
+
+<body class="landing-page">
+
+    <!-- Floating Pill Header -->
+    <header class="landing-header floating-pill" role="banner">
+        <a href="/" class="landing-logo" aria-label="LMS+ Home">
+            <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+ Logo">
+        </a>
+        <nav class="landing-nav" aria-label="Main navigation">
+            <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer" class="btn-discord"
+                aria-label="Join Discord"><span class="btn-text">Join Discord</span> <i class="fab fa-discord"
+                    style="margin-left: 0.5rem;"></i></a>
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('main.dashboard') }}" class="btn-primary btn-glow"
+                aria-label="Launch the LMS+ dashboard"><span class="btn-text">Launch App</span> <i
+                    class="fa-solid fa-rocket" aria-hidden="true" style="margin-left: 0.5rem;"></i></a>
+            {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn-primary btn-glow" aria-label="Login to launch LMS+"><span
+                    class="btn-text">Launch App</span> <i class="fa-solid fa-rocket" aria-hidden="true"
+                    style="margin-left: 0.5rem;"></i></a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <div class="landing-container">
+        <main>
+            <!-- Hero Section -->
+            <section class="hero-section">
+                <div class="hero-grid-overlay"></div>
+                <div class="hero-text-static"
+                    style="display: flex; flex-direction: column; align-items: center; margin-bottom: 3.5rem;">
+                    <h1 class="hero-title">Bahria LMS & CMS,<br><span style="color: #3b82f6; font-style: italic; font-weight: 500;">finally fixed.</span></h1>
+                    <p class="hero-subtitle">Skip the constant logouts. Track your attendance, assignments, and GPA from a single, instant dashboard.</p>
+                </div>
+                <div class="hero-cta"
+                    style="display: flex; gap: 1rem; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('main.dashboard') }}" class="btn-primary btn-glow"
+                        aria-label="Launch the LMS+ dashboard">
+                        Launch App <i class="fa-solid fa-rocket" aria-hidden="true"></i>
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="btn-primary btn-glow"
+                        aria-label="Login to launch LMS+">
+                        Launch App <i class="fa-solid fa-rocket" aria-hidden="true"></i>
+                    </a>
+                    {% endif %}
+                    <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer"
+                        class="btn-secondary btn-discord" aria-label="Join the LMS+ Discord community">
+                        <i class="fa-brands fa-discord" aria-hidden="true"></i> Join Discord
+                    </a>
+                </div>
+
+                
+                <div class="hero-scroll-indicator" onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})">
+                    <div class="mouse-icon">
+                        <div class="mouse-wheel"></div>
+                    </div>
+                    <span class="scroll-text">Scroll to explore</span>
+                </div>
+
+                <!-- 3D Floating Dashboard Mockup -->
+                <div class="hero-mockup-container reveal-mockup">
+                    <div class="mockup-placeholder">
+                        <div class="mockup-header">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        
+                        <!-- Code-built Dashboard Mockup -->
+                        <div class="dash-mockup">
+                            <!-- Sidebar -->
+                            <div class="dash-sidebar">
+                                <div class="dash-logo">
+                                    <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+">
+                                </div>
+                                <div class="dash-nav">
+                                    <div class="dash-nav-item active"><i class="fa-solid fa-house"></i> Dashboard</div>
+                                    <div class="dash-nav-item"><i class="fa-regular fa-calendar"></i> Timetable</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-clipboard-user"></i> Attendance</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-graduation-cap"></i> Results</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-book"></i> LMS</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-chart-line"></i> Assignment Monitor</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-list-check"></i> Assignments</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-file-lines"></i> Lecture Notes</div>
+                                    <div class="dash-nav-item"><i class="fa-solid fa-handshake-angle"></i> Community Service</div>
+                                    <div class="dash-nav-item" style="margin-top: 1rem;"><i class="fa-solid fa-gear"></i> Settings</div>
+                                </div>
+                                <div class="dash-profile">
+                                    <div style="display:flex; align-items:center; gap:0.75rem;"><div class="dash-avatar">S</div><div class="dash-name">Sami</div></div>
+                                    <i class="fa-solid fa-angles-left" style="color: #64748b; font-size: 0.8rem; margin-left: auto;"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Main Content -->
+                            <div class="dash-main">
+                                <div class="dash-header">
+                                    <div class="dash-welcome">Welcome back, <span class="text-blue">Sami</span></div>
+                                    <i class="fa-solid fa-arrows-rotate dash-refresh"></i>
+                                </div>
+                                
+                                <div class="dash-stats">
+                                    <div class="dash-stat-card dash-anim-1">
+                                        <i class="fa-solid fa-graduation-cap text-blue" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i>
+                                        <div class="dash-stat-val">BS (AI)</div>
+                                        <div class="dash-stat-label">Enrolled Program</div>
+                                    </div>
+                                    <div class="dash-stat-card dash-anim-2">
+                                        <i class="fa-solid fa-clipboard-list text-blue" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i>
+                                        <div class="dash-stat-val">0</div>
+                                        <div class="dash-stat-label">Pending Assignments</div>
+                                    </div>
+                                    <div class="dash-stat-card dash-anim-3">
+                                        <i class="fa-solid fa-bullseye text-blue" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i>
+                                        <div class="dash-stat-val">3.02</div>
+                                        <div class="dash-stat-label">Current GPA</div>
+                                    </div>
+                                    <div class="dash-stat-card dash-anim-4">
+                                        <i class="fa-solid fa-handshake-angle text-blue" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i>
+                                        <div class="dash-stat-val">26</div>
+                                        <div class="dash-stat-label">CSP Hours</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="dash-events dash-anim-5">
+                                    <div class="dash-events-header">
+                                        <i class="fa-regular fa-calendar-days text-blue"></i> Upcoming Events
+                                    </div>
+                                    <div class="dash-events-list">
+                                        <div class="dash-event">
+                                            <div class="dash-event-date"><span class="mo">MAR</span><span class="da">30</span></div>
+                                            <div class="dash-event-info">
+                                                <div class="dash-event-title">Midterm Exams</div>
+                                                <div class="dash-event-time"><i class="fa-regular fa-clock"></i> Mar 30 - Apr 7, 2026</div>
+                                            </div>
+                                        </div>
+                                        <div class="dash-event">
+                                            <div class="dash-event-date"><span class="mo">APR</span><span class="da">5</span></div>
+                                            <div class="dash-event-info">
+                                                <div class="dash-event-title">CSP Club: Seminar</div>
+                                                <div class="dash-event-time"><i class="fa-regular fa-clock"></i> 5 Apr 2026</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- Features Section -->
+            <section class="features-section" id="features">
+                <div class="scroll-reveal-section" style="height: 300vh; position: relative; margin-top: 5rem;">
+                    <div class="scroll-reveal-sticky" style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <h2 class="section-title" style="font-size: clamp(3rem, 6vw, 5rem); margin: 0; max-width: 900px; text-align: center; line-height: 1.1; letter-spacing: -0.03em;">
+                            <span class="scroll-reveal-text" style="display: inline-block; margin-right: 0.5rem;">Never miss a</span><span class="reveal-dynamic-word" style="color: #3b82f6; display: inline-block; min-width: 250px; transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.2s ease;">deadline.</span>
+                        </h2>
+                    </div>
+                </div>
+
+                <div class="features-showcase">
+
+                    <!-- Feature 1: Deadline Monitor -->
+                    <div class="feature-showcase" data-feature="1">
+                        <div class="fs-text fs-reveal-left">
+                            <h3 class="fs-title">Deadline Monitor</h3>
+                            <p class="fs-desc">Every pending, missed, and urgent task in one place. No more checking five different course pages.</p>
+                        </div>
+                        <div class="fs-mockup fs-reveal-right">
+                            <div class="mockup-wrapper monitor-mockup">
+                                <div class="mon-stats">
+                                    <div class="mon-stat urgent-stat mon-delay-1">
+                                        <div class="mon-stat-icon"><i class="fa-solid fa-fire"></i></div>
+                                        <div class="mon-stat-info">
+                                            <span class="mon-val">1</span>
+                                            <span class="mon-label">Urgent (24H)</span>
+                                        </div>
+                                    </div>
+                                    <div class="mon-stat missed-stat mon-delay-2">
+                                        <div class="mon-stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                        <div class="mon-stat-info">
+                                            <span class="mon-val">1</span>
+                                            <span class="mon-label">Missed</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mon-list">
+                                    <div class="mon-item item-urgent mon-delay-3">
+                                        <div class="mon-item-header">
+                                            <div class="mon-item-title">Assignment 3</div>
+                                            <div class="mon-badge badge-urgent">DUE SOON</div>
+                                        </div>
+                                        <div class="mon-item-course">Compiler Construction</div>
+                                        <div class="mon-item-footer">
+                                            <i class="fa-regular fa-clock"></i> Due in 2 hours
+                                        </div>
+                                        <div class="mon-timer-bar"><div class="mon-timer-fill"></div></div>
+                                    </div>
+                                    <div class="mon-item item-missed mon-delay-4">
+                                        <div class="mon-item-header">
+                                            <div class="mon-item-title">Lab Journal 5</div>
+                                            <div class="mon-badge badge-missed">OVERDUE</div>
+                                        </div>
+                                        <div class="mon-item-course">Database Management Systems Lab</div>
+                                        <div class="mon-item-footer">
+                                            <i class="fa-solid fa-circle-exclamation"></i> Overdue by 2 days
+                                        </div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feature 2: Live Attendance -->
+                    <div class="feature-showcase" data-feature="2">
+                        <div class="fs-mockup fs-reveal-left">
+                            <div class="mockup-wrapper att-mockup">
+                                <div class="att-stats">
+                                    <div class="att-stat stat-safe att-delay-1">
+                                        <div class="att-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                                        <div class="att-info">
+                                            <div class="att-val">6</div>
+                                            <div class="att-label">Safe</div>
+                                        </div>
+                                    </div>
+                                    <div class="att-stat stat-warn att-delay-2">
+                                        <div class="att-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                        <div class="att-info">
+                                            <div class="att-val">3</div>
+                                            <div class="att-label">Warning</div>
+                                        </div>
+                                    </div>
+                                    <div class="att-stat stat-crit att-delay-3">
+                                        <div class="att-icon"><i class="fa-solid fa-bell"></i></div>
+                                        <div class="att-info">
+                                            <div class="att-val">0</div>
+                                            <div class="att-label">Critical</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="att-courses">
+                                    <div class="att-course course-safe att-delay-4">
+                                        <div class="att-c-border"></div>
+                                        <div class="att-c-header">
+                                            <div class="att-c-title">Data Communication</div>
+                                            <div class="att-badge badge-safe">100.0%</div>
+                                        </div>
+                                        <div class="att-c-code">CEN 222</div>
+                                        <div class="att-c-stats">
+                                            <div class="att-c-row"><span>PRESENT:</span> <strong>48/48</strong></div>
+                                            <div class="att-c-row"><span>ABSENT:</span> <strong>0</strong></div>
+                                            <div class="att-c-row"><span>REMAINING:</span> <strong>12 hrs</strong></div>
+                                        </div>
+                                    </div>
+                                    <div class="att-course course-warn att-delay-5">
+                                        <div class="att-c-border"></div>
+                                        <div class="att-c-header">
+                                            <div class="att-c-title">Artificial Intelligence</div>
+                                            <div class="att-badge badge-warn">81.2%</div>
+                                        </div>
+                                        <div class="att-c-code">AIL 201</div>
+                                        <div class="att-c-stats">
+                                            <div class="att-c-row"><span>PRESENT:</span> <strong>39/48</strong></div>
+                                            <div class="att-c-row"><span>ABSENT:</span> <strong>9</strong></div>
+                                            <div class="att-c-row"><span>REMAINING:</span> <strong>3 hrs</strong></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+                        <div class="fs-text fs-reveal-right">
+                            <h3 class="fs-title">Live Attendance</h3>
+                            <p class="fs-desc">Direct sync from the CMS. Know exactly how many classes you can afford to skip before hitting 60%.</p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 3: 1-Click Downloads -->
+                    <div class="feature-showcase" data-feature="3">
+                        <div class="fs-text fs-reveal-left">
+                            <h3 class="fs-title">1-Click Downloads</h3>
+                            <p class="fs-desc">Download a full semester of lectures and slides in one ZIP. Skip clicking through sixteen weeks of folders.</p>
+                        </div>
+                        <div class="fs-mockup fs-reveal-right">
+                            <div class="mockup-wrapper download-mockup">
+                                <div class="dl-bg-ui">
+                                    <div class="dl-header">
+                                        <div class="dl-title">Course Lectures</div>
+                                        <div class="dl-btn-download">
+                                            <i class="fa-solid fa-cloud-arrow-down"></i> Download All
+                                        </div>
+                                    </div>
+                                    <div class="dl-list">
+                                        <div class="dl-row"><div class="dl-file"></div><div class="dl-size"></div></div>
+                                        <div class="dl-row"><div class="dl-file"></div><div class="dl-size"></div></div>
+                                        <div class="dl-row"><div class="dl-file"></div><div class="dl-size"></div></div>
+                                        <div class="dl-row"><div class="dl-file"></div><div class="dl-size"></div></div>
+                                    </div>
+                                </div>
+                                <div class="dl-cursor">
+                                    <i class="fa-solid fa-arrow-pointer"></i>
+                                </div>
+                                <div class="dl-modal">
+                                    <div class="dl-modal-state state-loading">
+                                        <div class="dl-icon-blue"><i class="fa-solid fa-file-zipper"></i></div>
+                                        <div class="dl-m-title">Creating ZIP Archive</div>
+                                        <div class="dl-progress-track">
+                                            <div class="dl-progress-fill"></div>
+                                        </div>
+                                    </div>
+                                    <div class="dl-modal-state state-success">
+                                        <div class="dl-icon-green"><i class="fa-solid fa-check"></i></div>
+                                        <div class="dl-m-title">Archive Ready!</div>
+                                        <div class="dl-progress-track">
+                                            <div class="dl-progress-fill full"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feature 4: Discord Pings -->
+                    <div class="feature-showcase" data-feature="4">
+                        <div class="fs-mockup fs-reveal-left">
+                            <div class="mockup-wrapper discord-mockup">
+                                <div class="d-msg">
+                                    <div class="d-avatar"><i class="fa-solid fa-robot"></i></div>
+                                    <div class="d-content">
+                                        <div class="d-header">
+                                            <span class="d-name">LMS BOT</span>
+                                            <span class="d-badge">APP</span>
+                                            <span class="d-time">Today at 8:00 PM</span>
+                                        </div>
+                                        <div class="d-embed d-delay-1">
+                                            <div class="d-embed-title">Due in 3h — AI Lab</div>
+                                            <div class="d-embed-desc">Lab Journal is due very soon</div>
+                                            <div class="d-embed-fields">
+                                                <div class="d-field">
+                                                    <div class="d-field-name">Deadline</div>
+                                                    <div class="d-field-val">11:55 PM</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-embed d-embed-secondary d-delay-2">
+                                            <div class="d-embed-title">New Assignment — DBMS</div>
+                                            <div class="d-embed-desc">Project has been posted</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+                        <div class="fs-text fs-reveal-right">
+                            <h3 class="fs-title">Discord Pings</h3>
+                            <p class="fs-desc">Deadline warnings sent straight to your Discord.</p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 5: Academic Results -->
+                    <div class="feature-showcase" data-feature="5">
+                        <div class="fs-text fs-reveal-left">
+                            <h3 class="fs-title">Academic Results</h3>
+                            <p class="fs-desc">Provisional results and live GPA math, front and center. No more digging through ancient submenus.</p>
+                        </div>
+                        <div class="fs-mockup fs-reveal-right">
+                            <div class="mockup-wrapper results-mockup">
+                                <div class="results-stat-group">
+                                    <div class="results-stat-card delay-2">
+                                        <div class="r-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+                                        <div class="r-data">
+                                            <div class="r-val">3.08</div>
+                                            <div class="r-label">Cumulative GPA</div>
+                                        </div>
+                                    </div>
+                                    <div class="results-stat-card delay-3">
+                                        <div class="r-icon"><i class="fa-solid fa-layer-group"></i></div>
+                                        <div class="r-data">
+                                            <div class="r-val">4</div>
+                                            <div class="r-label">Semesters</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="results-chart delay-4">
+                                    <svg viewBox="-30 0 330 120" class="results-svg" preserveAspectRatio="xMidYMid meet">
+                                        <defs>
+                                            <linearGradient id="chart-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"></stop>
+                                                <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"></stop>
+                                            </linearGradient>
+                                        </defs>
+                                        
+                                        <!-- Y-Axis Labels -->
+                                        <text x="-5" y="24" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">4.0</text>
+                                        <text x="-5" y="54" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">3.0</text>
+                                        <text x="-5" y="84" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">2.0</text>
+                                        
+                                        <!-- Grid lines -->
+                                        <line x1="15" y1="20" x2="285" y2="20" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                                        <line x1="15" y1="50" x2="285" y2="50" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                                        <line x1="15" y1="80" x2="285" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                                        
+                                        <!-- Perfectly smooth cubic bezier curve -->
+                                        <!-- M15,65 C60,65 60,45 105,45 C150,45 150,25 195,25 C240,25 240,35 285,35 -->
+                                        <path class="chart-area" d="M15,65 C60,65 60,45 105,45 C150,45 150,25 195,25 C240,25 240,35 285,35 L285,100 L15,100 Z" fill="url(#chart-grad)" />
+                                        <path class="chart-line" d="M15,65 C60,65 60,45 105,45 C150,45 150,25 195,25 C240,25 240,35 285,35" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+                                        
+                                        <!-- Data points with clean styling -->
+                                        <circle class="chart-point pt-1" cx="15" cy="65" r="4.5" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+                                        <circle class="chart-point pt-2" cx="105" cy="45" r="4.5" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+                                        <circle class="chart-point pt-3" cx="195" cy="25" r="4.5" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+                                        <circle class="chart-point pt-4" cx="285" cy="35" r="4.5" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+                                        
+                                        <!-- X-Axis Labels -->
+                                        <text x="15" y="112" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle" letter-spacing="0.05em">SEM 1</text>
+                                        <text x="105" y="112" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle" letter-spacing="0.05em">SEM 2</text>
+                                        <text x="195" y="112" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle" letter-spacing="0.05em">SEM 3</text>
+                                        <text x="285" y="112" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle" letter-spacing="0.05em">SEM 4</text>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feature 6: CSP Tracking -->
+                    <div class="feature-showcase" data-feature="6">
+                        <div class="fs-mockup fs-reveal-left">
+                            <div class="mockup-wrapper csp-mockup">
+                                <div class="csp-card">
+                                    <div class="csp-header">
+                                        <div class="csp-title">CSP Progress</div>
+                                        <div class="csp-stats">
+                                            <div class="csp-stat-item">
+                                                <span class="csp-stat-val text-blue">26</span>
+                                                <span class="csp-stat-label">COMPLETED</span>
+                                            </div>
+                                            <div class="csp-stat-divider">/</div>
+                                            <div class="csp-stat-item">
+                                                <span class="csp-stat-val">40</span>
+                                                <span class="csp-stat-label">REQUIRED</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="csp-grid"><div class="csp-block csp-filled" style="--i: 1"></div><div class="csp-block csp-filled" style="--i: 2"></div><div class="csp-block csp-filled" style="--i: 3"></div><div class="csp-block csp-filled" style="--i: 4"></div><div class="csp-block csp-filled" style="--i: 5"></div><div class="csp-block csp-filled" style="--i: 6"></div><div class="csp-block csp-filled" style="--i: 7"></div><div class="csp-block csp-filled" style="--i: 8"></div><div class="csp-block csp-filled" style="--i: 9"></div><div class="csp-block csp-filled" style="--i: 10"></div><div class="csp-block csp-filled" style="--i: 11"></div><div class="csp-block csp-filled" style="--i: 12"></div><div class="csp-block csp-filled" style="--i: 13"></div><div class="csp-block csp-filled" style="--i: 14"></div><div class="csp-block csp-filled" style="--i: 15"></div><div class="csp-block csp-filled" style="--i: 16"></div><div class="csp-block csp-filled" style="--i: 17"></div><div class="csp-block csp-filled" style="--i: 18"></div><div class="csp-block csp-filled" style="--i: 19"></div><div class="csp-block csp-filled" style="--i: 20"></div><div class="csp-block csp-filled" style="--i: 21"></div><div class="csp-block csp-filled" style="--i: 22"></div><div class="csp-block csp-filled" style="--i: 23"></div><div class="csp-block csp-filled" style="--i: 24"></div><div class="csp-block csp-filled" style="--i: 25"></div><div class="csp-block csp-filled" style="--i: 26"></div><div class="csp-block csp-current" style="--i: 27"></div><div class="csp-block csp-current" style="--i: 28"></div><div class="csp-block csp-empty" style="--i: 29"></div><div class="csp-block csp-empty" style="--i: 30"></div><div class="csp-block csp-empty" style="--i: 31"></div><div class="csp-block csp-empty" style="--i: 32"></div><div class="csp-block csp-empty" style="--i: 33"></div><div class="csp-block csp-empty" style="--i: 34"></div><div class="csp-block csp-empty" style="--i: 35"></div><div class="csp-block csp-empty" style="--i: 36"></div><div class="csp-block csp-empty" style="--i: 37"></div><div class="csp-block csp-empty" style="--i: 38"></div><div class="csp-block csp-empty" style="--i: 39"></div><div class="csp-block csp-empty" style="--i: 40"></div></div>
+                                    <div class="csp-footer">
+                                        <div class="csp-pct"><span class="text-green">65%</span> Complete</div>
+                                        <div class="csp-rem"><i class="fa-regular fa-clock"></i> 14 CSP remaining</div>
+                                    </div>
+                                </div>
+                                                            </div>
+                        </div>
+                        <div class="fs-text fs-reveal-right">
+                            <h3 class="fs-title">CSP Tracking</h3>
+                            <p class="fs-desc">Track your community service hours and see exactly what's left to graduate.</p>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- FAQ Chat Section -->
+            <section class="faq-section faq-chat-section" id="faq" aria-label="Frequently Asked Questions">
+                <div class="faq-chat-header">
+                    <h2 class="section-title">Your Questions <span class="text-blue">Answered</span>.</h2>
+                    <p class="faq-subtitle">Everything you need to know about preparing for and using LMS+.</p>
+                </div>
+
+                <div class="faq-chat-stream">
+                    <!-- Q1 -->
+                    <div class="faq-thread" data-thread="1">
+                        <div class="faq-row faq-row-student">
+                            <div class="faq-avatar student-avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></div>
+                            <div class="faq-bubble faq-question-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <h3 class="faq-question-text">Why build a modern Bahria student portal?</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="faq-row faq-row-bot">
+                            <div class="faq-bubble faq-answer-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <p class="faq-lead-text">We wanted a beautiful, smooth, and fast alternative to the outdated official interface.</p>
+                                    <p>Built by students, for students, LMS+ (LMS Plus) is the ultimate Bahria LMS and Bahria CMS portal reimagined for 2026. Enjoy pure speed, a built-in GPA calculator, and no more constant CMS logouts.</p>
+                                </div>
+                            </div>
+                            <div class="faq-avatar bot-avatar" aria-hidden="true"><i class="fa-solid fa-bolt"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Q2 -->
+                    <div class="faq-thread" data-thread="2">
+                        <div class="faq-row faq-row-student">
+                            <div class="faq-avatar student-avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></div>
+                            <div class="faq-bubble faq-question-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <h3 class="faq-question-text">Is this a replacement for Bahria LMS?</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="faq-row faq-row-bot">
+                            <div class="faq-bubble faq-answer-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <p class="faq-lead-text">LMS+ is a third-party application built to enhance your experience.</p>
+                                    <p>It acts as a powerful alternative interface for the official Bahria LMS and Bahria CMS, providing a faster and more intuitive way to manage your assignments and lectures.</p>
+                                </div>
+                            </div>
+                            <div class="faq-avatar bot-avatar" aria-hidden="true"><i class="fa-solid fa-bolt"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Q3 -->
+                    <div class="faq-thread" data-thread="3">
+                        <div class="faq-row faq-row-student">
+                            <div class="faq-avatar student-avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></div>
+                            <div class="faq-bubble faq-question-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <h3 class="faq-question-text">How does it sync with Bahria CMS?</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="faq-row faq-row-bot">
+                            <div class="faq-bubble faq-answer-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <p class="faq-lead-text">Direct, secure synchronization whenever you log in.</p>
+                                    <p>LMS+ securely communicates with Bahria CMS to instantly fetch your attendance, timetable, and provisional results. Your credentials are never stored in plain text and are only used for secure authentication.</p>
+                                </div>
+                            </div>
+                            <div class="faq-avatar bot-avatar" aria-hidden="true"><i class="fa-solid fa-bolt"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Q4 -->
+                    <div class="faq-thread" data-thread="4">
+                        <div class="faq-row faq-row-student">
+                            <div class="faq-avatar student-avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></div>
+                            <div class="faq-bubble faq-question-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <h3 class="faq-question-text">Are my credentials safe?</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="faq-row faq-row-bot">
+                            <div class="faq-bubble faq-answer-bubble">
+                                <div class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></div>
+                                <div class="faq-bubble-content">
+                                    <p class="faq-lead-text">Yes, 100% encrypted and protected.</p>
+                                    <p>We use industry-standard encryption for all data transfers. Your credentials are encrypted and only used to interact with the official portal on your behalf.</p>
+                                </div>
+                            </div>
+                            <div class="faq-avatar bot-avatar" aria-hidden="true"><i class="fa-solid fa-bolt"></i></div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="landing-footer">
+            <div class="footer-container">
+                <div class="footer-brand">
+                    <a href="/" class="footer-logo" aria-label="LMS+ Home">
+                        <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+ Logo"
+                            class="footer-logo-img">
+                    </a>
+                    <p class="footer-tagline">Everything you need, faster.</p>
+                </div>
+
+                <div class="footer-bottom">
+                    <button class="author-badge" id="footerAuthorBtnUnauth">
+                        <span class="badge-text">Made by</span>
+                        <span class="badge-author">SAMI</span>
+                    </button>
+                    <p class="footer-copyright">&copy; 2026 LMS+. Not officially affiliated with Bahria University.</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Social Card Modal -->
+    <div class="social-modal-overlay" id="socialModalOverlayUnauth" role="dialog" aria-modal="true"
+        aria-labelledby="socialModalTitle">
+        <div class="social-modal" id="socialModalUnauth">
+            <button class="social-card-close" id="socialCardCloseUnauth" aria-label="Close modal" style="position: absolute; top: 12px; right: 12px;">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="social-links">
+                <a href="https://linkedin.com/in/samiullahq/" target="_blank" rel="noopener noreferrer"
+                    class="social-link linkedin" aria-label="LinkedIn">
+                    <i class="fab fa-linkedin"></i>
+                </a>
+                <a href="https://instagram.com/samiternity/" target="_blank" rel="noopener noreferrer"
+                    class="social-link instagram" aria-label="Instagram">
+                    <i class="fab fa-instagram"></i>
+                </a>
+                <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer"
+                    class="social-link discord" aria-label="Discord">
+                    <i class="fab fa-discord"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div class="lightbox-overlay" id="lightboxOverlay" role="dialog" aria-modal="true" aria-label="Image preview">
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close image preview">
+            <i class="fas fa-times"></i>
+        </button>
+        <img class="lightbox-img" id="lightboxImage" src="" alt="Enlarged screenshot">
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Social Modal Logic
+            const btn = document.getElementById('footerAuthorBtnUnauth');
+            const overlay = document.getElementById('socialModalOverlayUnauth');
+            const modal = document.getElementById('socialModalUnauth');
+            const closeBtn = document.getElementById('socialCardCloseUnauth');
+
+            if (btn && overlay && modal && closeBtn) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    overlay.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                    closeBtn.focus();
+                });
+
+                closeBtn.addEventListener('click', function () {
+                    overlay.classList.remove('active');
+                    document.body.style.overflow = '';
+                    btn.focus();
+                });
+
+                overlay.addEventListener('click', function (e) {
+                    if (e.target === overlay) {
+                        overlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                        btn.focus();
+                    }
+                });
+
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && overlay.classList.contains('active')) {
+                        overlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                        btn.focus();
+                    }
+                });
+            }
+
+            // Lightbox Logic
+            const lightboxOverlay = document.getElementById('lightboxOverlay');
+            const lightboxImage = document.getElementById('lightboxImage');
+            const lightboxClose = document.getElementById('lightboxClose');
+            const featureImages = document.querySelectorAll('.feature-image img, .dashboard-mockup-img');
+
+            if (lightboxOverlay && lightboxImage && lightboxClose) {
+                featureImages.forEach(img => {
+                    img.addEventListener('click', function () {
+                        lightboxImage.src = this.src;
+                        lightboxOverlay.classList.add('active');
+                        document.body.style.overflow = 'hidden';
+                    });
+                });
+
+                lightboxClose.addEventListener('click', function () {
+                    lightboxOverlay.classList.remove('active');
+                    document.body.style.overflow = '';
+                });
+
+                lightboxOverlay.addEventListener('click', function (e) {
+                    if (e.target === lightboxOverlay) {
+                        lightboxOverlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                    }
+                });
+
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && lightboxOverlay.classList.contains('active')) {
+                        lightboxOverlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                    }
+                });
+            }
+
+            // FAQ Chat Morph Animation Logic
+            const faqSection = document.querySelector('.faq-chat-section');
+            if (faqSection) {
+                const bubbles = Array.from(faqSection.querySelectorAll('.faq-bubble'));
+
+                if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && bubbles.length > 0) {
+                    // Cache measured natural dimensions
+                    const bubbleSizes = new Map();
+                    bubbles.forEach((bubble, idx) => {
+                        bubbleSizes.set(idx, {
+                            width: bubble.offsetWidth,
+                            height: bubble.offsetHeight
+                        });
+                    });
+
+                    let morphInitialized = false;
+
+                    function setupMorphEngine() {
+                        if (morphInitialized) return;
+                        morphInitialized = true;
+
+                        bubbles.forEach((bubble) => {
+                            const content = bubble.querySelector('.faq-bubble-content');
+                            const indicator = bubble.querySelector('.typing-indicator');
+
+                            bubble.style.width = '52px';
+                            bubble.style.height = '52px';
+                            bubble.style.padding = '0';
+                            bubble.style.borderRadius = '50%';
+                            bubble.style.transform = 'scale(0)';
+                            bubble.style.transition = 'none';
+
+                            if (content) {
+                                content.style.opacity = '0';
+                                content.style.transition = 'opacity 0.3s ease';
+                            }
+                            if (indicator) {
+                                indicator.style.display = 'flex';
+                                indicator.style.opacity = '1';
+                            }
+                        });
+
+                        const bubbleObserver = new IntersectionObserver((entries) => {
+                            entries.forEach((entry) => {
+                                if (entry.isIntersecting) {
+                                    const el = entry.target;
+                                    bubbleObserver.unobserve(el);
+                                    triggerBubbleMorph(el);
+                                }
+                            });
+                        }, {
+                            threshold: 0.15,
+                            rootMargin: '0px 0px -10% 0px'
+                        });
+
+                        bubbles.forEach((b) => bubbleObserver.observe(b));
+                    }
+
+                    function triggerBubbleMorph(bubble) {
+                        const idx = bubbles.indexOf(bubble);
+                        const size = bubbleSizes.get(idx);
+                        const content = bubble.querySelector('.faq-bubble-content');
+                        const indicator = bubble.querySelector('.typing-indicator');
+                        const isQuestion = bubble.classList.contains('faq-question-bubble');
+
+                        // Stage 1: Pop in 52px circle with typing indicator
+                        bubble.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+                        bubble.style.transform = 'scale(1)';
+
+                        // Stage 2: Morph into full pill and stagger content
+                        setTimeout(() => {
+                            if (indicator) {
+                                indicator.style.transition = 'opacity 0.2s ease';
+                                indicator.style.opacity = '0';
+                                setTimeout(() => {
+                                    indicator.style.display = 'none';
+                                }, 200);
+                            }
+
+                            const targetRadius = isQuestion 
+                                ? '1.75rem 1.75rem 1.75rem 0.35rem' 
+                                : '1.75rem 1.75rem 0.35rem 1.75rem';
+
+                            bubble.style.transition = 'width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), border-radius 0.4s ease, padding 0.3s ease';
+                            bubble.style.padding = '1.25rem 1.75rem';
+                            bubble.style.borderRadius = targetRadius;
+
+                            if (size) {
+                                bubble.style.width = size.width + 'px';
+                                bubble.style.height = size.height + 'px';
+                            }
+
+                            setTimeout(() => {
+                                if (content) {
+                                    content.style.opacity = '1';
+                                }
+                                bubble.classList.add('morph-complete');
+                                // Release fixed pixel constraints for fluid responsive reflow
+                                bubble.style.width = '';
+                                bubble.style.height = '';
+                            }, 350);
+                        }, 400);
+                    }
+
+                    // Bot-safe: initialize animation only on genuine user scroll
+                    window.addEventListener('scroll', setupMorphEngine, { once: true, passive: true });
+
+                    // Re-calculate or reset on window resize
+                    window.addEventListener('resize', () => {
+                        bubbles.forEach((b) => {
+                            if (b.classList.contains('morph-complete')) {
+                                b.style.width = '';
+                                b.style.height = '';
+                            }
+                        });
+                    }, { passive: true });
+                }
+            }
+        });
+    </script>
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "LMS+",
+      "alternateName": ["LMS Plus", "Bahria LMS Plus", "Bahria LMS+"],
+      "operatingSystem": "Web",
+      "applicationCategory": "EducationalApplication",
+      "url": "https://lmsplus.xyz/",
+      "description": "A blazing-fast, modern alternative interface for Bahria LMS and Bahria CMS. Features include attendance tracking, assignment monitor, mass lecture downloads, and timetable management.",
+      "author": {
+        "@type": "Person",
+        "name": "SAMI"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+</body>
+
+</html>

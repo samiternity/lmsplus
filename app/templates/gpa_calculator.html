@@ -1,0 +1,1486 @@
+{% extends "base.html" %}
+
+{% block title %}GPA Calculator | LMS+{% endblock %}
+
+{% block meta %}
+    <meta name="description" content="Easily calculate your Bahria University GPA or CGPA. Predict your grades and plan your semester effortlessly with LMS+.">
+    <meta name="keywords" content="bahria gpa calculator, cgpa calculator, bahria university, grade predictor">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lmsplus.xyz/gpa-calculator">
+    <meta property="og:site_name" content="LMS+">
+    <meta property="og:title" content="Bahria GPA Calculator | LMS+">
+    <meta property="og:description" content="Easily calculate your Bahria University GPA or CGPA. Predict your grades and plan your semester effortlessly with LMS+.">
+    <meta property="og:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:secure_url" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Bahria GPA Calculator Preview">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://lmsplus.xyz/gpa-calculator">
+    <meta name="twitter:title" content="Bahria GPA Calculator | LMS+">
+    <meta name="twitter:description" content="Easily calculate your Bahria University GPA or CGPA. Predict your grades and plan your semester effortlessly with LMS+.">
+    <meta name="twitter:image" content="https://lmsplus.xyz/static/images/og-preview.jpg">
+
+    <link rel="canonical" href="https://lmsplus.xyz/gpa-calculator">
+    
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Bahria GPA Calculator | LMS+",
+      "applicationCategory": "EducationalApplication",
+      "url": "https://lmsplus.xyz/gpa-calculator",
+      "description": "A dedicated GPA and CGPA calculator for Bahria University students.",
+      "author": {
+        "@type": "Person",
+        "name": "SAMI"
+      }
+    }
+    </script>
+{% endblock %}
+
+{% set gpa_content %}
+<div class="hero-grid-overlay" style="position: fixed; z-index: 0;"></div>
+<!-- Floating Pill Header -->
+<header class="gpa-header floating-pill" role="banner">
+    <a href="/" class="gpa-logo" aria-label="LMS+ Home">
+        <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+ Logo">
+    </a>
+    <nav class="gpa-nav" aria-label="Main navigation">
+        <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer" class="btn-discord" aria-label="Join Discord"><span class="btn-text">Join Discord</span> <i class="fab fa-discord" style="margin-left: 0.5rem;"></i></a>
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('main.dashboard') }}" class="btn-primary btn-glow" aria-label="Launch the LMS+ dashboard"><span class="btn-text">Launch App</span> <i class="fa-solid fa-rocket" aria-hidden="true" style="margin-left: 0.5rem;"></i></a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn-primary btn-glow" aria-label="Login to launch LMS+"><span class="btn-text">Launch App</span> <i class="fa-solid fa-rocket" aria-hidden="true" style="margin-left: 0.5rem;"></i></a>
+        {% endif %}
+    </nav>
+</header>
+
+<div class="gpa-workspace">
+    <div class="workspace-header">
+        <h1 class="workspace-title">Bahria University GPA Calculator</h1>
+        <p class="workspace-subtitle">Enter your course grades to calculate your semester GPA or CGPA</p>
+    </div>
+    
+    <div class="workspace-content">
+        <form id="gpaForm">
+            <div id="coursesList">
+                <div class="course-row">
+                    <div class="form-group course-serial-group">
+                        <label class="form-label" style="visibility: hidden;">#</label>
+                        <div class="course-serial">
+                            <span class="serial-number">1</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Course Name</label>
+                        <input type="text" class="form-input course-name" placeholder="e.g., Data Structures">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Credit Hours</label>
+                        <select class="form-select credit-hours">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3" selected>3</option>
+                            <option value="4">4</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Grade</label>
+                        <select class="form-select course-grade">
+                            <option value="">Select Grade</option>
+                            <option value="A">A (4.0) [85-100]</option>
+                            <option value="A-">A- (3.7) [80-84]</option>
+                            <option value="B+">B+ (3.3) [75-79]</option>
+                            <option value="B">B (3.0) [71-74]</option>
+                            <option value="B-">B- (2.7) [68-70]</option>
+                            <option value="C+">C+ (2.3) [64-67]</option>
+                            <option value="C">C (2.0) [60-63]</option>
+                            <option value="C-">C- (1.7) [57-59]</option>
+                            <option value="D+">D+ (1.3) [53-56]</option>
+                            <option value="D">D (1.0) [50-52]</option>
+                            <option value="F">F (0.0) [0-49]</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-error btn-sm remove-course" style="margin-top: 1.5rem;" aria-label="Remove course">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Ghost Add Row -->
+            <button type="button" class="add-course-ghost" id="addCourse" aria-label="Add a new course">
+                <span class="ghost-icon"><i class="fas fa-plus"></i></span>
+                <span class="ghost-text">Add another course</span>
+            </button>
+        </form>
+
+        <!-- Hero Calculate Button -->
+        <button type="button" class="btn action-btn-hero" id="calculateGPA">
+            <i class="fas fa-calculator"></i> Calculate GPA
+        </button>
+        <div class="clear-all-wrap">
+            <button type="button" class="btn-clear-text" id="clearAll">
+                <i class="fas fa-times"></i> Clear all courses
+            </button>
+        </div>
+        
+        <div id="resultsCard" class="results-panel" style="display: none;">
+            <h3 class="results-title">Calculation Results</h3>
+            <div class="results-grid">
+                <div class="result-item">
+                    <div class="result-value" id="totalCredits">0</div>
+                    <div class="result-label">Total Credits</div>
+                </div>
+                <div class="result-item">
+                    <div class="result-value" id="calculatedGPA">0.00</div>
+                    <div class="result-label">Semester GPA</div>
+                </div>
+                <div class="result-item">
+                    <div class="result-value" id="gradeLevel">-</div>
+                    <div class="result-label">Grade Level</div>
+                </div>
+            </div>
+            <div class="grade-description" id="gradeDescription">
+                Enter your course grades to see your GPA calculation
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="landing-footer">
+    <div class="footer-container">
+        <div class="footer-brand">
+            <a href="/" class="footer-logo" aria-label="LMS+ Home">
+                <img src="{{ url_for('static', filename='logo-dark-expanded.webp') }}" alt="LMS+ Logo" class="footer-logo-img">
+            </a>
+            <p class="footer-tagline">Everything you need, faster.</p>
+        </div>
+        
+        <div class="footer-bottom">
+            <button class="author-badge" id="footerAuthorBtnUnauth">
+                <span class="badge-text">Made by</span>
+                <span class="badge-author">SAMI</span>
+            </button>
+            <p class="footer-copyright">&copy; 2026 LMS+. Not officially affiliated with Bahria University.</p>
+        </div>
+    </div>
+</footer>
+
+<!-- Social Card Modal -->
+<div class="social-modal-overlay" id="socialModalOverlayUnauth">
+    <div class="social-modal" id="socialModalUnauth">
+        <button class="social-card-close" id="socialCardCloseUnauth" aria-label="Close" style="position: absolute; top: 12px; right: 12px;">
+            <i class="fas fa-times"></i>
+        </button>
+        <div class="social-links">
+            <a href="https://linkedin.com/in/samiullahq/" target="_blank" rel="noopener noreferrer" class="social-link linkedin" aria-label="LinkedIn">
+                <i class="fab fa-linkedin"></i>
+            </a>
+            <a href="https://instagram.com/samiternity/" target="_blank" rel="noopener noreferrer" class="social-link instagram" aria-label="Instagram">
+                <i class="fab fa-instagram"></i>
+            </a>
+            <a href="https://discord.gg/DVUq7gaM3E" target="_blank" rel="noopener noreferrer" class="social-link discord" aria-label="Discord">
+                <i class="fab fa-discord"></i>
+            </a>
+        </div>
+    </div>
+</div>
+{% endset %}
+
+{% block content %}
+{{ gpa_content }}
+{% endblock %}
+
+{% block unauthenticated_content %}
+{{ gpa_content }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Grid Background Overlay */
+.hero-grid-overlay {
+    top: 0;
+    left: 50%;
+    width: 100vw;
+    transform: translateX(-50%);
+    height: 100vh;
+    pointer-events: none;
+    background-size: 40px 40px;
+    background-image: 
+        linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+}
+
+/* 1. Global Reset & Cinematic Background */
+#sidebar, .header, .app-header, .app-footer, .mobile-nav {
+    display: none !important;
+}
+
+.app-container {
+    display: block !important;
+    background-color: var(--bg-primary);
+    background-image: radial-gradient(circle at center, rgba(59, 130, 246, 0.08) 0%, transparent 60%);
+    min-height: 100vh;
+}
+
+.main-content {
+    margin-left: 0 !important;
+    transition: none !important;
+}
+
+.content, .app-container > main.content, .main-content > main.content {
+    margin-left: 0 !important;
+    padding: 8rem 1rem 4rem !important; /* Top padding clears the floating pill */
+    overflow: visible;
+}
+
+/* 2. Floating Pill Header (Matching Landing Page) */
+.gpa-header.floating-pill {
+    position: fixed;
+    top: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1000px;
+    background-color: var(--bg-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.gpa-logo img {
+    height: 56px;
+    width: auto;
+}
+
+.gpa-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.gpa-nav .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 50px;
+    text-decoration: none;
+    white-space: nowrap;
+    background: linear-gradient(180deg, #2563eb 0%, #1e40af 100%);
+    border: 1px solid #1e3a8a;
+    color: white;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 2px 8px rgba(30, 64, 175, 0.3);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+
+.gpa-nav .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(30, 64, 175, 0.4);
+}
+
+.gpa-nav .btn-discord {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 50px;
+    text-decoration: none;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.gpa-nav .btn-discord:hover {
+    background: rgba(88, 101, 242, 0.2);
+    border-color: #5865F2;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+/* 3. Workspace Layout */
+.gpa-workspace {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 1rem 4rem; /* Reduced padding since we removed the sticky bar */
+    position: relative;
+    z-index: 1;
+}
+
+.workspace-header {
+    padding: 2rem 0 3rem;
+    text-align: center;
+}
+
+.workspace-title {
+    font-size: 3rem !important;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #fff 0%, rgba(255, 255, 255, 0.7) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.03em;
+}
+
+.workspace-subtitle {
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+}
+
+/* 4. Form Layout & Animations */
+@keyframes slideInCourse {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes slideOutCourse {
+    from {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-40px) scale(0.95);
+    }
+}
+
+@keyframes pulseGrade {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+    50% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+/* Custom Dropdown Styles */
+.custom-dropdown {
+    position: relative;
+    width: 100%;
+    user-select: none;
+    outline: none;
+}
+
+.custom-dropdown-selected {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    height: 48px; /* Match standard inputs */
+    color: var(--text-primary);
+}
+
+.custom-dropdown-selected:hover, .custom-dropdown:focus .custom-dropdown-selected {
+    border-color: rgba(59, 130, 246, 0.5);
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.custom-dropdown.open .custom-dropdown-selected {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.custom-dropdown-selected i {
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    color: var(--text-secondary);
+}
+
+.custom-dropdown.open .custom-dropdown-selected i {
+    transform: rotate(180deg);
+}
+
+.custom-dropdown-options {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    background-color: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    max-height: 250px;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px) scale(0.95);
+    transform-origin: top;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-dropdown.open .custom-dropdown-options {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+.custom-option {
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+.custom-option:last-child {
+    border-bottom: none;
+}
+
+.custom-option:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+.custom-option.selected {
+    background-color: rgba(59, 130, 246, 0.2);
+}
+
+.grade-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #fff;
+    transition: all 0.2s;
+}
+
+.custom-option.selected .grade-badge {
+    background: #3b82f6;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.grade-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.grade-points {
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.grade-range {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.custom-dropdown-options::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-dropdown-options::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 8px 0;
+}
+.custom-dropdown-options::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+.custom-dropdown-options::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.course-serial-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.course-serial {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+}
+
+.serial-number {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    line-height: 0;
+    padding-bottom: 2px;
+}
+
+.course-row {
+    display: grid;
+    grid-template-columns: 40px 2.5fr 1fr 1.5fr auto;
+    gap: 1.5rem;
+    margin-bottom: 1.25rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    align-items: end;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1;
+}
+
+.course-row:focus-within {
+    z-index: 50;
+}
+
+.course-row-enter {
+    animation: slideInCourse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.course-row-exit {
+    animation: slideOutCourse 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+.grade-pulse {
+    animation: pulseGrade 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.course-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Ghost Add Course Row */
+.add-course-ghost {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    padding: 1rem 1.5rem;
+    margin-top: 0.5rem;
+    background: transparent;
+    border: 2px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 50px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-align: left;
+}
+
+.add-course-ghost:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.04);
+    color: #93c5fd;
+    transform: translateY(-1px);
+}
+
+.ghost-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: #93c5fd;
+    flex-shrink: 0;
+    transition: all 0.25s ease;
+}
+
+.add-course-ghost:hover .ghost-icon {
+    background: rgba(59, 130, 246, 0.25);
+    transform: rotate(90deg);
+}
+
+/* Hero Calculate Button */
+.action-btn-hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 320px;
+    margin: 3rem auto 1rem;
+    padding: 1rem 2rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    color: #fff;
+    letter-spacing: 0.02em;
+    box-shadow: 0 10px 30px rgba(37, 99, 235, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn-hero::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: skewX(-20deg);
+    animation: shine 4s infinite;
+}
+
+.action-btn-hero:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 40px rgba(37, 99, 235, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+@keyframes shine {
+    0% { left: -100%; }
+    20% { left: 200%; }
+    100% { left: 200%; }
+}
+
+/* Clear All text link */
+.clear-all-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.btn-clear-text {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.btn-clear-text:hover {
+    color: #f87171;
+}
+
+/* 5. Results Panel */
+.results-panel {
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(0,0,0,0.4) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    animation: slideUpFade 0.5s ease forwards;
+    padding: 3rem;
+    margin-top: 3rem;
+    backdrop-filter: blur(10px);
+}
+
+.results-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    color: #fff;
+    text-align: center;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.result-item {
+    text-align: center;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.result-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #3b82f6;
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.result-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.grade-description {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    color: #60a5fa;
+    font-weight: 500;
+}
+
+.remove-course {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.remove-course:hover {
+    transform: scale(1.05);
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .course-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        padding: 3.5rem 1.25rem 1.25rem;
+        position: relative;
+    }
+    
+    /* Index Pill Top-Left */
+    .course-serial-group {
+        position: absolute;
+        top: 1.25rem;
+        left: 1.25rem;
+    }
+    
+    .course-serial-group .form-label {
+        display: none;
+    }
+
+    .course-serial {
+        height: auto;
+    }
+
+    /* Course Name Full Width */
+    .course-row > .form-group:nth-child(2) {
+        grid-column: span 2;
+    }
+
+    /* Trash Button Top-Right */
+    .course-row > .form-group:nth-child(5) {
+        position: absolute;
+        top: 1.25rem;
+        right: 1.25rem;
+    }
+    
+    .remove-course {
+        margin-top: 0 !important;
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .results-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .workspace-header {
+        padding: 1.5rem 0 2rem;
+    }
+
+    .workspace-title {
+        font-size: 2rem !important;
+    }
+    
+    .results-panel {
+        padding: 1.5rem;
+    }
+
+    .gpa-header.floating-pill {
+        top: 1rem;
+        width: 95%;
+        padding: 0.5rem 1rem;
+    }
+    
+    .command-center {
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    
+    .command-actions-secondary {
+        flex-direction: column;
+    }
+
+    /* Fix Dropdown Wrapping on Mobile */
+    .custom-dropdown-options {
+        width: max-content;
+        min-width: 100%;
+        max-width: 85vw;
+    }
+    
+    /* Grade Dropdown expands to the left to prevent overflow */
+    .course-row > .form-group:nth-child(4) .custom-dropdown-options {
+        left: auto;
+        right: 0;
+    }
+}
+
+/* Landing Footer Styles */
+.landing-footer {
+    position: relative;
+    padding: 5rem 0 3rem;
+    margin-top: 3rem;
+    overflow: hidden;
+    width: 100%;
+    background-color: var(--bg-primary);
+}
+
+.landing-footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+}
+
+.landing-footer::after {
+    content: '';
+    position: absolute;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(88, 101, 242, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 3rem;
+    position: relative;
+    z-index: 1;
+}
+
+.footer-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+}
+
+.footer-logo img {
+    height: 56px;
+    width: auto;
+    filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));
+}
+
+.footer-tagline {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.footer-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    width: 100%;
+}
+
+.author-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 50px;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    backdrop-filter: blur(10px);
+}
+
+.author-badge:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+}
+
+.badge-heart {
+    color: #ef4444;
+    font-size: 0.9rem;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.author-badge:hover .badge-heart {
+    transform: scale(1.2);
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+}
+
+.footer-copyright {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+
+@media (max-width: 768px) {
+    .gpa-header.floating-pill {
+        padding: 0.5rem 1rem;
+        width: 95%;
+        top: 1rem;
+    }
+    .gpa-logo img {
+        height: 40px; /* shrink logo slightly */
+    }
+    .gpa-nav {
+        gap: 0.4rem;
+    }
+    .gpa-nav .btn-primary, .gpa-nav .btn-discord {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+}
+@media (max-width: 480px) {
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+    .gpa-header.floating-pill {
+        padding: 0.4rem 0.5rem;
+    }
+    .gpa-logo img {
+        height: 32px; 
+    }
+    .gpa-nav {
+        gap: 0.3rem;
+    }
+    .gpa-nav .btn-primary, .gpa-nav .btn-discord {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+    }
+    .gpa-nav .fa-rocket, 
+    .gpa-nav .fa-discord {
+        margin-left: 0.3rem !important; 
+    }
+}
+@media (max-width: 350px) {
+    .gpa-nav .btn-text {
+        display: none;
+    }
+    .gpa-nav .fa-rocket, 
+    .gpa-nav .fa-discord {
+        margin-left: 0 !important;
+    }
+    .gpa-nav .btn-primary, 
+    .gpa-nav .btn-discord {
+        padding: 0.5rem;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let courseCount = 1;
+
+const gradesList = [
+    {val: 'A', gpa: '4.0', range: '85-100%'},
+    {val: 'A-', gpa: '3.7', range: '80-84%'},
+    {val: 'B+', gpa: '3.3', range: '75-79%'},
+    {val: 'B', gpa: '3.0', range: '71-74%'},
+    {val: 'B-', gpa: '2.7', range: '68-70%'},
+    {val: 'C+', gpa: '2.3', range: '64-67%'},
+    {val: 'C', gpa: '2.0', range: '60-63%'},
+    {val: 'C-', gpa: '1.7', range: '57-59%'},
+    {val: 'D+', gpa: '1.3', range: '53-56%'},
+    {val: 'D', gpa: '1.0', range: '50-52%'},
+    {val: 'F', gpa: '0.0', range: '0-49%'}
+];
+
+function initCustomDropdowns() {
+    document.querySelectorAll('.course-grade:not(.custom-initialized)').forEach(select => {
+        select.classList.add('custom-initialized');
+        select.style.display = 'none';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'custom-dropdown';
+        dropdown.tabIndex = 0;
+
+        const selected = document.createElement('div');
+        selected.className = 'custom-dropdown-selected';
+        selected.innerHTML = `<span>Select Grade</span><i class="fas fa-chevron-down"></i>`;
+
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'custom-dropdown-options';
+
+        const addOption = (val, gpa, range, isPlaceholder = false) => {
+            const opt = document.createElement('div');
+            opt.className = 'custom-option' + (isPlaceholder ? ' selected' : '');
+            opt.dataset.value = val;
+            
+            if (isPlaceholder) {
+                opt.innerHTML = `<span class="grade-badge">--</span><div class="grade-info"><span class="grade-points">Select Grade</span></div>`;
+            } else {
+                opt.innerHTML = `<span class="grade-badge">${val}</span><div class="grade-info"><span class="grade-points">${gpa} GPA</span><span class="grade-range">${range}</span></div>`;
+            }
+
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                select.value = val;
+                
+                if (isPlaceholder) {
+                    selected.querySelector('span').textContent = 'Select Grade';
+                } else {
+                    selected.querySelector('span').textContent = `${val} (${gpa})`;
+                }
+
+                optionsContainer.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                dropdown.classList.remove('open');
+
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            optionsContainer.appendChild(opt);
+        };
+
+        addOption('', '', '', true);
+        gradesList.forEach(g => addOption(g.val, g.gpa, g.range));
+
+        dropdown.appendChild(selected);
+        dropdown.appendChild(optionsContainer);
+        select.parentNode.insertBefore(dropdown, select.nextSibling);
+
+        dropdown.addEventListener('click', () => {
+            document.querySelectorAll('.custom-dropdown.open').forEach(d => {
+                if (d !== dropdown) d.classList.remove('open');
+            });
+            dropdown.classList.toggle('open');
+        });
+
+        dropdown.addEventListener('blur', () => {
+            dropdown.classList.remove('open');
+        });
+    });
+}
+
+function initCreditDropdowns() {
+    document.querySelectorAll('.credit-hours:not(.custom-initialized)').forEach(select => {
+        select.classList.add('custom-initialized');
+        select.style.display = 'none';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'custom-dropdown';
+        dropdown.tabIndex = 0;
+
+        const selected = document.createElement('div');
+        selected.className = 'custom-dropdown-selected';
+        selected.innerHTML = `<span>${select.value}</span><i class="fas fa-chevron-down"></i>`;
+
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'custom-dropdown-options';
+
+        const addOption = (val) => {
+            const opt = document.createElement('div');
+            opt.className = 'custom-option' + (val === select.value ? ' selected' : '');
+            opt.dataset.value = val;
+            
+            opt.innerHTML = `<span style="font-weight: 600; color: #fff; padding-left: 0.5rem;">${val}</span>`;
+
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                select.value = val;
+                selected.querySelector('span').textContent = val;
+
+                optionsContainer.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                dropdown.classList.remove('open');
+
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            optionsContainer.appendChild(opt);
+        };
+
+        ['1', '2', '3', '4'].forEach(v => addOption(v));
+
+        dropdown.appendChild(selected);
+        dropdown.appendChild(optionsContainer);
+        select.parentNode.insertBefore(dropdown, select.nextSibling);
+
+        dropdown.addEventListener('click', () => {
+            document.querySelectorAll('.custom-dropdown.open').forEach(d => {
+                if (d !== dropdown) d.classList.remove('open');
+            });
+            dropdown.classList.toggle('open');
+        });
+
+        dropdown.addEventListener('blur', () => {
+            dropdown.classList.remove('open');
+        });
+    });
+}
+
+function updateSerialNumbers() {
+    document.querySelectorAll('.course-row').forEach((row, index) => {
+        const badge = row.querySelector('.serial-number');
+        if (badge) {
+            badge.textContent = index + 1;
+        }
+    });
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-dropdown')) {
+        document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const addCourseBtn = document.getElementById('addCourse');
+    const calculateBtn = document.getElementById('calculateGPA');
+    const clearAllBtn = document.getElementById('clearAll');
+    
+    addCourseBtn.addEventListener('click', addCourse);
+    calculateBtn.addEventListener('click', calculateGPA);
+    clearAllBtn.addEventListener('click', clearAll);
+    
+    // Initialize initial dropdowns
+    initCustomDropdowns();
+    initCreditDropdowns();
+    updateSerialNumbers();
+    
+    // Add event listener for removing courses
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-course')) {
+            removeCourse(e.target.closest('.course-row'));
+        }
+    });
+
+    // Add pulse animation on dropdown change
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('course-grade')) {
+            const customDropdown = e.target.nextElementSibling;
+            if(customDropdown && customDropdown.classList.contains('custom-dropdown')) {
+                const selected = customDropdown.querySelector('.custom-dropdown-selected');
+                selected.classList.remove('grade-pulse');
+                void selected.offsetWidth;
+                selected.classList.add('grade-pulse');
+            }
+        }
+    });
+});
+
+function addCourse() {
+    courseCount++;
+    const coursesList = document.getElementById('coursesList');
+    
+    const courseRow = document.createElement('div');
+    courseRow.className = 'course-row course-row-enter';
+    courseRow.innerHTML = `
+        <div class="form-group course-serial-group">
+            <label class="form-label" style="visibility: hidden;">#</label>
+            <div class="course-serial">
+                <span class="serial-number"></span>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Course Name</label>
+            <input type="text" class="form-input course-name" placeholder="e.g., Course Name">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Credit Hours</label>
+            <select class="form-select credit-hours">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+                <option value="4">4</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Grade</label>
+            <select class="form-select course-grade">
+                <option value="">Select Grade</option>
+                <option value="A">A (4.0) [85-100]</option>
+                <option value="A-">A- (3.7) [80-84]</option>
+                <option value="B+">B+ (3.3) [75-79]</option>
+                <option value="B">B (3.0) [71-74]</option>
+                <option value="B-">B- (2.7) [68-70]</option>
+                <option value="C+">C+ (2.3) [64-67]</option>
+                <option value="C">C (2.0) [60-63]</option>
+                <option value="C-">C- (1.7) [57-59]</option>
+                <option value="D+">D+ (1.3) [53-56]</option>
+                <option value="D">D (1.0) [50-52]</option>
+                <option value="F">F (0.0) [0-49]</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button type="button" class="btn btn-error btn-sm remove-course" style="margin-top: 1.5rem;">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+    
+    coursesList.appendChild(courseRow);
+    
+    // Initialize custom dropdown for the newly added row
+    initCustomDropdowns();
+    initCreditDropdowns();
+    updateSerialNumbers();
+}
+
+function removeCourse(courseRow) {
+    if (document.querySelectorAll('.course-row').length > 1) {
+        courseRow.classList.add('course-row-exit');
+        setTimeout(() => {
+            courseRow.remove();
+            updateSerialNumbers();
+        }, 300); // Matches the 0.3s CSS animation duration
+    } else {
+        if (window.portal) {
+            window.portal.showNotification('At least one course is required', 'warning');
+        }
+    }
+}
+
+function calculateGPA() {
+    const courses = [];
+    const courseRows = document.querySelectorAll('.course-row');
+    
+    courseRows.forEach(row => {
+        const name = row.querySelector('.course-name').value.trim();
+        const credits = parseFloat(row.querySelector('.credit-hours').value);
+        const grade = row.querySelector('.course-grade').value;
+        
+        if (name && credits && grade) {
+            courses.push({
+                name: name,
+                credit_hours: credits,
+                grade: grade
+            });
+        }
+    });
+    
+    if (courses.length === 0) {
+        if (window.portal) {
+            window.portal.showNotification('Please enter at least one complete course', 'warning');
+        }
+        return;
+    }
+    
+    // Send to backend for calculation
+    fetch('/calculate-gpa', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ courses: courses })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            if (window.portal) {
+                window.portal.showNotification(data.error, 'error');
+            }
+        } else {
+            displayResults(data);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        if (window.portal) {
+            window.portal.showNotification('Error calculating GPA', 'error');
+        }
+    });
+}
+
+function displayResults(data) {
+    document.getElementById('calculatedGPA').textContent = data.gpa.toFixed(2);
+    document.getElementById('totalCredits').textContent = data.total_credits;
+    document.getElementById('gradeLevel').textContent = data.grade_interpretation.level;
+    document.getElementById('gradeDescription').textContent = data.grade_interpretation.description;
+    
+    // Color code the GPA based on value
+    const gpaElement = document.getElementById('calculatedGPA');
+    if (data.gpa >= 3.5) {
+        gpaElement.style.color = '#10b981'; /* Emerald 500 */
+        gpaElement.style.textShadow = '0 0 20px rgba(16, 185, 129, 0.3)';
+    } else if (data.gpa >= 3.0) {
+        gpaElement.style.color = '#f59e0b'; /* Amber 500 */
+        gpaElement.style.textShadow = '0 0 20px rgba(245, 158, 11, 0.3)';
+    } else {
+        gpaElement.style.color = '#ef4444'; /* Red 500 */
+        gpaElement.style.textShadow = '0 0 20px rgba(239, 68, 68, 0.3)';
+    }
+    
+    document.getElementById('resultsCard').style.display = 'block';
+    // Small delay to allow the element to render before smoothly scrolling
+    setTimeout(() => {
+        document.getElementById('resultsCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+}
+
+// Social Modal Logic for GPA page
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('footerAuthorBtnUnauth');
+    const overlay = document.getElementById('socialModalOverlayUnauth');
+    const modal = document.getElementById('socialModalUnauth');
+    const closeBtn = document.getElementById('socialCardCloseUnauth');
+    
+    if (btn && overlay && modal && closeBtn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            overlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        
+        closeBtn.addEventListener('click', function() {
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        });
+        
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+    }
+});
+
+function clearAll() {
+    if (confirm('Are you sure you want to clear all courses?')) {
+        const coursesList = document.getElementById('coursesList');
+        const rows = document.querySelectorAll('.course-row');
+        
+        // Animate out all rows
+        rows.forEach(row => row.classList.add('course-row-exit'));
+        
+        setTimeout(() => {
+            coursesList.innerHTML = `
+                <div class="course-row course-row-enter">
+                    <div class="course-serial">
+                        <span class="serial-number">1</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Course Name</label>
+                        <input type="text" class="form-input course-name" placeholder="e.g., Data Structures">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Credit Hours</label>
+                        <select class="form-select credit-hours">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3" selected>3</option>
+                            <option value="4">4</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Grade</label>
+                        <select class="form-select course-grade">
+                            <option value="">Select Grade</option>
+                            <option value="A">A (4.0) [85-100]</option>
+                            <option value="A-">A- (3.7) [80-84]</option>
+                            <option value="B+">B+ (3.3) [75-79]</option>
+                            <option value="B">B (3.0) [71-74]</option>
+                            <option value="B-">B- (2.7) [68-70]</option>
+                            <option value="C+">C+ (2.3) [64-67]</option>
+                            <option value="C">C (2.0) [60-63]</option>
+                            <option value="C-">C- (1.7) [57-59]</option>
+                            <option value="D+">D+ (1.3) [53-56]</option>
+                            <option value="D">D (1.0) [50-52]</option>
+                            <option value="F">F (0.0) [0-49]</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-error btn-sm remove-course" style="margin-top: 1.5rem;" aria-label="Remove course">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('resultsCard').style.display = 'none';
+            courseCount = 1;
+            
+            // Re-initialize custom dropdown for the reset row
+            initCustomDropdowns();
+            initCreditDropdowns();
+            updateSerialNumbers();
+        }, 300);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+name: Deploy to Testing
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-testing:
+    name: Deploy to Testing Environment
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/public-release')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_TESTING }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Snapshot testing rollback state
+        run: python scripts/staging_proxy_rollout.py snapshot
+
+      - name: Validate testing MCP configuration
+        id: mcp
+        env:
+          ENABLE_MCP: ${{ vars.TESTING_LMS_MCP_ENABLED }}
+          DOWNLOAD_KEY: ${{ secrets.TESTING_LMS_MCP_DOWNLOAD_KEY }}
+          ACCOUNT_ID: ${{ secrets.TESTING_LMS_MCP_ACCOUNT_ID }}
+          PROXY_HOSTS: ${{ vars.TESTING_LMS_MCP_PROXY_HOSTS }}
+        run: |
+          if [[ "$ENABLE_MCP" != true ]]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$DOWNLOAD_KEY" =~ ^[0-9a-fA-F]{64}$ || ! "$ACCOUNT_ID" =~ ^[A-Za-z0-9_-]+$ || -z "$PROXY_HOSTS" ]]; then
+            echo 'Testing MCP requires a dedicated 32-byte key, one account ID, and Cloud Run proxy hosts.' >&2
+            exit 1
+          fi
+          read -r -a proxy_hosts <<< "$PROXY_HOSTS"
+          for host in "${proxy_hosts[@]}"; do
+            if [[ ! "$host" =~ ^[a-z0-9.-]+\.run\.app$ ]]; then
+              echo 'Set TESTING_LMS_MCP_PROXY_HOSTS to space-separated Cloud Run hostnames.' >&2
+              exit 1
+            fi
+          done
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
+      - name: Check required proxy configuration
+        env:
+          WORKER_ORIGIN: ${{ vars.TESTING_LMS_WORKER_ORIGIN }}
+          WORKER_KEY: ${{ secrets.TESTING_LMS_WORKER_PROXY_KEY }}
+          FILE_KEY: ${{ secrets.TESTING_DOWNLOAD_ENCRYPTION_KEY }}
+        run: |
+          if [[ ! "$WORKER_ORIGIN" =~ ^https://[^/[:space:]?#@]+/?$ || ! "$WORKER_KEY" =~ ^[a-fA-F0-9]{64}$ || ! "$FILE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo 'Configure the Worker HTTPS origin and both 32-byte hexadecimal proxy and file keys before deploying.' >&2
+            exit 1
+          fi
+
+      - name: Build and Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          project_id: unitrack-testing
+          service: university-portal-test
+          region: us-central1
+          source: .
+          flags: >-
+            --allow-unauthenticated
+            --min-instances=0
+            --memory=1Gi
+            --add-volume=name=mcp-ram,type=in-memory,size-limit=128Mi
+            --add-volume-mount=volume=mcp-ram,mount-path=/mcp-ram
+          env_vars: |
+            APP_ENV=testing
+            LMS_TEST_PROXY_PROVIDER=${{ vars.TESTING_LMS_TEST_PROXY_PROVIDER }}
+            LMS_WORKER_ORIGIN=${{ vars.TESTING_LMS_WORKER_ORIGIN }}
+            LMS_WORKER_PROXY_KEY=${{ secrets.TESTING_LMS_WORKER_PROXY_KEY }}
+            LMS_SUPABASE_ORIGIN=${{ vars.TESTING_LMS_SUPABASE_ORIGIN }}
+            LMS_SUPABASE_PROXY_KEY=${{ secrets.TESTING_LMS_SUPABASE_PROXY_KEY }}
+            LMS_NETLIFY_ORIGIN=${{ vars.TESTING_LMS_NETLIFY_ORIGIN }}
+            LMS_NETLIFY_PROXY_KEY=${{ secrets.TESTING_LMS_NETLIFY_PROXY_KEY }}
+            LMS_VERCEL_ORIGIN=${{ vars.TESTING_LMS_VERCEL_ORIGIN }}
+            LMS_VERCEL_PROXY_KEY=${{ secrets.TESTING_LMS_VERCEL_PROXY_KEY }}
+            LMS_VAL_TOWN_ORIGIN=${{ vars.TESTING_LMS_VAL_TOWN_ORIGIN }}
+            LMS_VAL_TOWN_PROXY_KEY=${{ secrets.TESTING_LMS_VAL_TOWN_PROXY_KEY }}
+            ZIP_NATIVE_DOWNLOADS=true
+            USE_FIRESTORE=true
+            COST_SAFETY_ENABLED=true
+            FIREBASE_PROJECT_ID=unitrack-testing
+            FIREBASE_API_KEY=${{ secrets.TESTING_FIREBASE_API_KEY }}
+            FIREBASE_AUTH_DOMAIN=unitrack-testing.firebaseapp.com
+            FIREBASE_STORAGE_BUCKET=unitrack-testing.firebasestorage.app
+            FIREBASE_MESSAGING_SENDER_ID=966788266887
+            FIREBASE_APP_ID=${{ secrets.TESTING_FIREBASE_APP_ID }}
+            FIREBASE_VAPID_KEY=${{ secrets.TESTING_FIREBASE_VAPID_KEY }}
+            APP_URL=https://unitrack-testing.web.app
+            LMS_MCP_ENABLED=${{ steps.mcp.outputs.enabled }}
+            LMS_MCP_PROBE_ENABLED=false
+            LMS_MCP_WORKER_URL=https://unitrack-mcp-testing.iamsamihome.workers.dev
+            LMS_MCP_DOWNLOAD_KEY=${{ secrets.TESTING_LMS_MCP_DOWNLOAD_KEY }}
+            LMS_MCP_ALLOWED_ACCOUNTS=${{ secrets.TESTING_LMS_MCP_ACCOUNT_ID }}
+            LMS_MCP_PROXY_HOSTS=${{ vars.TESTING_LMS_MCP_PROXY_HOSTS }}
+            LMS_MCP_RAM_DIR=/mcp-ram
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            SCHEDULER_SECRET=${{ secrets.SCHEDULER_SECRET }}
+            DISCORD_CLIENT_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_CLIENT_ID || secrets.TESTING_DISCORD_CLIENT_ID }}
+            DISCORD_CLIENT_SECRET=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_CLIENT_SECRET || secrets.TESTING_DISCORD_CLIENT_SECRET }}
+            DISCORD_BOT_TOKEN=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_BOT_TOKEN || secrets.TESTING_DISCORD_BOT_TOKEN }}
+            DISCORD_PUBLIC_KEY=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_PUBLIC_KEY || secrets.TESTING_DISCORD_PUBLIC_KEY }}
+            DISCORD_GUILD_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_GUILD_ID || secrets.TESTING_DISCORD_GUILD_ID }}
+            DISCORD_LOG_WEBHOOK_URL=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_LOG_WEBHOOK_URL || secrets.TESTING_DISCORD_LOG_WEBHOOK_URL }}
+            DISCORD_AUTHORIZED_ROLE_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_AUTHORIZED_ROLE_ID || secrets.TESTING_DISCORD_AUTHORIZED_ROLE_ID }}
+            DOWNLOAD_ENCRYPTION_KEY=${{ secrets.TESTING_DOWNLOAD_ENCRYPTION_KEY }}
+            TURNSTILE_SITE_KEY=${{ secrets.TURNSTILE_SITE_KEY }}
+            TURNSTILE_SECRET_KEY=${{ secrets.TURNSTILE_SECRET_KEY }}
+
+      - name: Route traffic to the deployed revision
+        run: gcloud run services update-traffic university-portal-test --project unitrack-testing --region us-central1 --to-latest
+
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY_TESTING }}
+          projectId: unitrack-testing
+          target: testing
+          channelId: live
+
+      - name: Restore testing traffic after a failure
+        if: failure()
+        run: |
+          if [[ -f staging-rollback/cloud-run.json ]]; then
+            traffic=$(python - <<'PYTHON'
+          import json
+          with open('staging-rollback/cloud-run.json') as snapshot:
+              traffic = json.load(snapshot)['status']['traffic']
+          revisions = {}
+          for route in traffic:
+              if route.get('percent'):
+                  name = route['revisionName']
+                  revisions[name] = revisions.get(name, 0) + route['percent']
+          if sum(revisions.values()) != 100:
+              raise SystemExit('Could not restore the previous testing traffic split.')
+          print(','.join(f'{name}={percent}' for name, percent in revisions.items()))
+          PYTHON
+            )
+            gcloud run services update-traffic university-portal-test --project unitrack-testing --region us-central1 --to-revisions="$traffic"
+          fi

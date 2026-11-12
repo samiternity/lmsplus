@@ -1,0 +1,587 @@
+{% extends "base.html" %}
+
+{% block title %}LMS Setup Wizard | LMS+{% endblock %}
+
+{% block extra_css %}
+<style>
+.setup-wizard {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.wizard-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.wizard-icon {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.wizard-title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.wizard-subtitle {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.wizard-steps {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2rem;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.step.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.step.completed {
+    background: var(--success-color);
+    color: white;
+}
+
+.step-connector {
+    width: 2rem;
+    height: 2px;
+    background: var(--border-color);
+    margin: 0 0.5rem;
+}
+
+.wizard-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.step-content {
+    display: none;
+}
+
+.step-content.active {
+    display: block;
+}
+
+.benefits-list {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0;
+}
+
+.benefits-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.benefits-list li:last-child {
+    border-bottom: none;
+}
+
+.benefit-icon {
+    color: var(--success-color);
+    font-size: 1.1rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    transition: var(--transition);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-help {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.btn-group {
+    display: flex;
+    gap: 1rem;
+}
+
+.test-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+}
+
+.test-result.success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #059669;
+}
+
+.test-result.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+}
+
+.test-result.loading {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #2563eb;
+}
+
+.completion-message {
+    text-align: center;
+    padding: 2rem;
+}
+
+.completion-icon {
+    font-size: 4rem;
+    color: var(--success-color);
+    margin-bottom: 1rem;
+}
+
+.completion-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.completion-subtitle {
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+}
+
+.next-steps {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.next-steps h4 {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.next-steps ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.next-steps li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    color: var(--text-secondary);
+}
+
+.next-steps .step-number {
+    background: var(--primary-color);
+    color: white;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .setup-wizard {
+        margin: 1rem;
+        padding: 0;
+    }
+    
+    .wizard-steps {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .step-connector {
+        display: none;
+    }
+    
+    .wizard-actions {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .btn-group {
+        width: 100%;
+        flex-direction: column;
+    }
+    
+    .btn-group .btn {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="setup-wizard">
+    <div class="wizard-header">
+        <div class="wizard-icon">
+            <i class="fas fa-graduation-cap"></i>
+        </div>
+        <h1 class="wizard-title">LMS Integration Setup</h1>
+        <p class="wizard-subtitle">
+            Connect your Learning Management System account to access assignments and lecture notes directly from LMS+.
+        </p>
+    </div>
+    
+    <div class="wizard-steps">
+        <div class="step active" id="step1-indicator">
+            <i class="fas fa-info-circle"></i>
+            <span>Introduction</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" id="step2-indicator">
+            <i class="fas fa-key"></i>
+            <span>Credentials</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" id="step3-indicator">
+            <i class="fas fa-check"></i>
+            <span>Complete</span>
+        </div>
+    </div>
+    
+    <div class="wizard-content">
+        <!-- Step 1: Introduction -->
+        <div class="step-content active" id="step1">
+            <h2>Welcome to LMS Integration</h2>
+            <p>By connecting your LMS account, you'll be able to:</p>
+            
+            <ul class="benefits-list">
+                <li>
+                    <i class="fas fa-tasks benefit-icon"></i>
+                    <div>
+                        <strong>View Assignments</strong><br>
+                        <small>See all your assignments with deadlines and submission status</small>
+                    </div>
+                </li>
+                <li>
+                    <i class="fas fa-book-open benefit-icon"></i>
+                    <div>
+                        <strong>Access Lecture Notes</strong><br>
+                        <small>Download lecture materials and view video links</small>
+                    </div>
+                </li>
+                <li>
+                    <i class="fas fa-upload benefit-icon"></i>
+                    <div>
+                        <strong>Submit Assignments</strong><br>
+                        <small>Upload assignment files directly through LMS+</small>
+                    </div>
+                </li>
+                <li>
+                    <i class="fas fa-bell benefit-icon"></i>
+                    <div>
+                        <strong>Get Notifications</strong><br>
+                        <small>Receive alerts for upcoming deadlines and new content</small>
+                    </div>
+                </li>
+                <li>
+                    <i class="fas fa-sync benefit-icon"></i>
+                    <div>
+                        <strong>Automatic Sync</strong><br>
+                        <small>Your data stays up-to-date automatically</small>
+                    </div>
+                </li>
+            </ul>
+            
+            <div class="alert alert-info">
+                <i class="fas fa-shield-alt"></i>
+                <strong>Security Note:</strong> Your LMS credentials are encrypted and stored securely. 
+                We only use them to fetch your academic data and never share them with third parties.
+            </div>
+        </div>
+        
+        <!-- Step 2: Credentials -->
+        <div class="step-content" id="step2">
+            <h2>Enter Your LMS Credentials</h2>
+            <p>Please enter the same username and password you use to log into the LMS website.</p>
+            
+            <form id="credentialsForm">
+                <div class="form-group">
+                    <label class="form-label" for="lms_username">LMS Username</label>
+                    <input type="text" id="lms_username" name="lms_username" class="form-input" 
+                           placeholder="Enter your LMS username" required>
+                    <div class="form-help">This is the same username you use to log into lms.bahria.edu.pk</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="lms_password">LMS Password</label>
+                    <input type="password" id="lms_password" name="lms_password" class="form-input" 
+                           placeholder="Enter your LMS password" required>
+                    <div class="form-help">Your password will be encrypted and stored securely</div>
+                </div>
+            </form>
+            
+            <div id="credentialsTestResult" class="test-result" style="display: none;"></div>
+        </div>
+        
+        <!-- Step 3: Complete -->
+        <div class="step-content" id="step3">
+            <div class="completion-message">
+                <div class="completion-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h2 class="completion-title">Setup Complete!</h2>
+                <p class="completion-subtitle">
+                    Your LMS integration has been successfully configured. You can now access your assignments and lecture notes.
+                </p>
+                
+                <div class="next-steps">
+                    <h4>What's Next?</h4>
+                    <ul>
+                        <li>
+                            <span class="step-number">1</span>
+                            <span>Visit the LMS Dashboard to see your assignments</span>
+                        </li>
+                        <li>
+                            <span class="step-number">2</span>
+                            <span>Check out your lecture notes and download materials</span>
+                        </li>
+                        <li>
+                            <span class="step-number">3</span>
+                            <span>Set up notifications in Settings if desired</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="wizard-actions">
+        <button class="btn btn-outline" id="prevBtn" onclick="previousStep()" style="display: none;">
+            <i class="fas fa-arrow-left"></i> Previous
+        </button>
+        
+        <div class="btn-group">
+            <button class="btn btn-secondary" id="testBtn" onclick="testCredentials()" style="display: none;">
+                <i class="fas fa-check"></i> Test Connection
+            </button>
+            
+            <button class="btn btn-primary" id="nextBtn" onclick="nextStep()">
+                Next <i class="fas fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentStep = 1;
+const totalSteps = 3;
+
+function updateStepIndicators() {
+    for (let i = 1; i <= totalSteps; i++) {
+        const indicator = document.getElementById(`step${i}-indicator`);
+        const content = document.getElementById(`step${i}`);
+        
+        if (i < currentStep) {
+            indicator.className = 'step completed';
+            content.classList.remove('active');
+        } else if (i === currentStep) {
+            indicator.className = 'step active';
+            content.classList.add('active');
+        } else {
+            indicator.className = 'step';
+            content.classList.remove('active');
+        }
+    }
+    
+    // Update button visibility
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const testBtn = document.getElementById('testBtn');
+    
+    prevBtn.style.display = currentStep > 1 ? 'block' : 'none';
+    
+    if (currentStep === 2) {
+        testBtn.style.display = 'block';
+        nextBtn.innerHTML = 'Complete Setup <i class="fas fa-check"></i>';
+    } else if (currentStep === 3) {
+        testBtn.style.display = 'none';
+        nextBtn.innerHTML = 'Go to LMS Dashboard <i class="fas fa-external-link-alt"></i>';
+    } else {
+        testBtn.style.display = 'none';
+        nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
+    }
+}
+
+function nextStep() {
+    if (currentStep === 2) {
+        // Complete setup
+        completeSetup();
+    } else if (currentStep === 3) {
+        // Go to LMS dashboard
+        window.location.href = '{{ url_for("lms.assignment_monitor") }}';
+    } else {
+        // Move to next step
+        currentStep++;
+        updateStepIndicators();
+    }
+}
+
+function previousStep() {
+    if (currentStep > 1) {
+        currentStep--;
+        updateStepIndicators();
+    }
+}
+
+function testCredentials() {
+    const username = document.getElementById('lms_username').value.trim();
+    const password = document.getElementById('lms_password').value.trim();
+    
+    if (!username || !password) {
+        showTestResult('Please enter both username and password.', 'error');
+        return;
+    }
+    
+    showTestResult('Testing credentials...', 'loading');
+    
+    const formData = new FormData();
+    formData.append('lms_username', username);
+    formData.append('lms_password', password);
+    
+    fetch('{{ url_for("settings.test_lms_credentials") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let message = data.message;
+            if (data.student_info && data.student_info.name) {
+                message += ` Welcome, ${data.student_info.name}!`;
+            }
+            showTestResult(message, 'success');
+        } else {
+            showTestResult(data.error || 'Credential test failed.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error testing credentials:', error);
+        showTestResult('An error occurred while testing credentials.', 'error');
+    });
+}
+
+function completeSetup() {
+    const username = document.getElementById('lms_username').value.trim();
+    const password = document.getElementById('lms_password').value.trim();
+    
+    if (!username || !password) {
+        showTestResult('Please enter both username and password.', 'error');
+        return;
+    }
+    
+    showTestResult('Setting up LMS integration...', 'loading');
+    
+    const formData = new FormData();
+    formData.append('lms_username', username);
+    formData.append('lms_password', password);
+    
+    fetch('{{ url_for("settings.complete_lms_setup") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showTestResult(data.message, 'success');
+            setTimeout(() => {
+                currentStep = 3;
+                updateStepIndicators();
+            }, 2000);
+        } else {
+            showTestResult(data.error || 'Setup failed.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error completing setup:', error);
+        showTestResult('An error occurred during setup.', 'error');
+    });
+}
+
+function showTestResult(message, type) {
+    const resultDiv = document.getElementById('credentialsTestResult');
+    resultDiv.className = `test-result ${type}`;
+    resultDiv.textContent = message;
+    resultDiv.style.display = 'block';
+    
+    // Auto-hide success messages after 5 seconds
+    if (type === 'success') {
+        setTimeout(() => {
+            resultDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Initialize wizard
+document.addEventListener('DOMContentLoaded', function() {
+    updateStepIndicators();
+});
+</script>
+{% endblock %}

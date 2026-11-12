@@ -1,0 +1,88 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment files
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Encryption keys
+.encryption_key
+serviceAccountKey*.json
+gha-creds-*.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Instance folder
+instance/
+
+# Log files
+*.log
+*.log.*
+/logs/
+
+# Data directory (scraped data)
+/app/data/
+/data/
+/backups/
+/scratch/
+/validation/
+
+# IDE
+.vscode/
+.idea/
+.kiro/
+.agent/
+.agents/
+.impeccable/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+.coverage
+.hypothesis/
+.firebase/
+.wrangler/
+/supabase/.temp/
+
+
+node_modules/
+
+# Local provider configuration
+/wrangler.local.toml
+/firebase.hosting.local.json
+
+# Local optional-provider linkage
+**/.netlify/
+**/.vercel/
+
+# Private release rollback metadata
+production-rollback/
+staging-rollback/
+
+# Private deployment settings and local operational data
+/app/deployment_endpoints.json
+/deployment.txt
+/blacklist.txt
+/skills-lock.json
+/docs/private/
+/docs/SECURITY_VULNERABILITY_REPORT.md
+/.codex/

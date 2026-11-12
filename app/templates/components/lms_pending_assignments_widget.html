@@ -1,0 +1,1277 @@
+<!-- Summary Cards (Frameless on page canvas - zero backdrop) -->
+<div class="widget-summary-cards" id="widgetSummaryCards">
+    <div class="summary-card pending-card">
+        <div class="summary-icon">
+            <i class="fas fa-hourglass-half"></i>
+        </div>
+        <div class="summary-content">
+            <span class="summary-count" id="pendingCount">-</span>
+            <span class="summary-label">Pending</span>
+        </div>
+    </div>
+
+    <div class="summary-card urgent-card">
+        <div class="summary-icon">
+            <i class="fas fa-fire"></i>
+        </div>
+        <div class="summary-content">
+            <span class="summary-count" id="urgentCount">-</span>
+            <span class="summary-label">Urgent (24h)</span>
+        </div>
+    </div>
+
+    <div class="summary-card missed-card">
+        <div class="summary-icon">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="summary-content">
+            <span class="summary-count" id="missedCount">-</span>
+            <span class="summary-label">Missed</span>
+        </div>
+    </div>
+</div>
+
+<!-- Main Monitor Content Container -->
+<div class="pending-assignments-widget" id="pendingAssignmentsWidget">
+
+    <!-- Skeleton Loading State -->
+    <div class="widget-loading" id="widgetLoading">
+        <div class="skeleton-list">
+            <div class="skeleton-card">
+                <div class="skeleton-line shimmer sk-course"></div>
+                <div class="skeleton-line shimmer sk-title"></div>
+                <div class="skeleton-line shimmer sk-meta"></div>
+            </div>
+            <div class="skeleton-card">
+                <div class="skeleton-line shimmer sk-course"></div>
+                <div class="skeleton-line shimmer sk-title"></div>
+                <div class="skeleton-line shimmer sk-meta"></div>
+            </div>
+            <div class="skeleton-card">
+                <div class="skeleton-line shimmer sk-course"></div>
+                <div class="skeleton-line shimmer sk-title"></div>
+                <div class="skeleton-line shimmer sk-meta"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error State -->
+    <div class="widget-error" id="widgetError" style="display: none;">
+        <div class="error-icon">
+            <i class="fas fa-exclamation-circle"></i>
+        </div>
+        <p class="error-message" id="errorMessage">Failed to load assignments</p>
+        <button class="btn btn-primary btn-sm" id="retryBtn" onclick="loadAssignments(false)">
+            <i class="fas fa-redo"></i> Retry
+        </button>
+    </div>
+
+    <!-- Empty State (All-Clear State) -->
+    <div class="widget-empty" id="widgetEmpty" style="display: none;">
+        <div class="empty-badge-wrapper">
+            <div class="empty-badge-glow"></div>
+            <div class="empty-badge-core">
+                <i class="fas fa-check"></i>
+            </div>
+        </div>
+
+        <h3 class="empty-title">All caught up</h3>
+        <p class="empty-description">No pending assignments.</p>
+    </div>
+
+    <!-- Assignments Content -->
+    <div class="widget-content" id="widgetContent" style="display: none;">
+        <!-- Pending Assignments Section -->
+        <div class="assignments-section" id="pendingSection">
+            <div class="section-header">
+                <h4 class="section-title">
+                    <i class="fas fa-list-ul"></i>
+                    Pending Assignments
+                </h4>
+            </div>
+            <div class="assignments-list" id="pendingList">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+        <!-- Missed Assignments Section -->
+        <div class="assignments-section missed-section" id="missedSection" style="display: none;">
+            <div class="section-header">
+                <h4 class="section-title">
+                    <i class="fas fa-exclamation-circle"></i>
+                    Missed Assignments
+                </h4>
+            </div>
+            <div class="assignments-list" id="missedList">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Widget Styles -->
+<style>
+.pending-assignments-widget {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg, 16px);
+    box-shadow: 0 2px 10px var(--shadow-color);
+    overflow: hidden;
+}
+
+/* Summary Cards (Frameless Row - Zero Backdrop) */
+.widget-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    padding: 0;
+    margin-bottom: 1.5rem;
+    background: transparent;
+    border: none;
+}
+
+.summary-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.875rem;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.summary-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3.5px;
+    border-radius: 4px 0 0 4px;
+}
+
+/* Card Themes with Refined Surfaces - No Fuzzy Glow */
+.pending-card::before {
+    background: #3b82f6;
+    box-shadow: none;
+}
+.pending-card {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(30, 58, 138, 0.05) 100%), var(--bg-secondary);
+    border-color: rgba(96, 165, 250, 0.22);
+}
+.pending-card .summary-icon {
+    background: rgba(37, 99, 235, 0.14);
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    box-shadow: none;
+}
+.pending-card .summary-label {
+    color: var(--primary-color, #3b82f6);
+}
+[data-theme="dark"] .pending-card .summary-label {
+    color: #93c5fd;
+}
+.pending-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(96, 165, 250, 0.45);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.urgent-card::before {
+    background: #f59e0b;
+    box-shadow: none;
+}
+.urgent-card {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(180, 83, 9, 0.05) 100%), var(--bg-secondary);
+    border-color: rgba(251, 191, 36, 0.22);
+}
+.urgent-card .summary-icon {
+    background: rgba(245, 158, 11, 0.14);
+    color: #facc15;
+    border: 1px solid rgba(251, 191, 36, 0.22);
+    box-shadow: none;
+}
+.urgent-card .summary-label {
+    color: var(--warning-color, #f59e0b);
+}
+[data-theme="dark"] .urgent-card .summary-label {
+    color: #fde047;
+}
+.urgent-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(251, 191, 36, 0.45);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.missed-card::before {
+    background: #f43f5e;
+    box-shadow: none;
+}
+.missed-card {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.12) 0%, rgba(159, 18, 57, 0.05) 100%), var(--bg-secondary);
+    border-color: rgba(251, 113, 133, 0.22);
+}
+.missed-card .summary-icon {
+    background: rgba(244, 63, 94, 0.14);
+    color: #fb7185;
+    border: 1px solid rgba(251, 113, 133, 0.22);
+    box-shadow: none;
+}
+.missed-card .summary-label {
+    color: var(--error-color, #ef4444);
+}
+[data-theme="dark"] .missed-card .summary-label {
+    color: #fda4af;
+}
+.missed-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(251, 113, 133, 0.45);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.summary-icon {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 1.05rem;
+    box-shadow: none;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.summary-card:hover .summary-icon {
+    transform: scale(1.06);
+}
+
+.summary-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.summary-count {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: color 0.2s ease;
+}
+
+/* In-Flight Content Syncing State */
+.widget-summary-cards.is-refreshing-content,
+.widget-content.is-refreshing-content,
+.widget-empty.is-refreshing-content {
+    opacity: 0.68;
+    filter: saturate(0.88);
+    pointer-events: none;
+    transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), filter 0.25s ease;
+}
+
+.count-bump {
+    animation: count-pop 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes count-pop {
+    0% { transform: translateY(3px); opacity: 0.6; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Skeleton Loader */
+.widget-loading {
+    padding: 1.5rem;
+}
+
+.skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+.skeleton-card {
+    padding: 1.125rem 1.25rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius, 10px);
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.skeleton-line {
+    border-radius: 4px;
+}
+
+.shimmer {
+    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer-load 1.4s ease-in-out infinite;
+}
+
+.sk-course {
+    width: 32%;
+    height: 12px;
+}
+
+.sk-title {
+    width: 65%;
+    height: 16px;
+}
+
+.sk-meta {
+    width: 45%;
+    height: 12px;
+}
+
+@keyframes shimmer-load {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Error State */
+.widget-error {
+    padding: 3.5rem 1.5rem;
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 2.75rem;
+    color: var(--error-color, #ef4444);
+    margin-bottom: 0.75rem;
+}
+
+.error-message {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+}
+
+/* Delighted Empty State (Anti-Slop) */
+.widget-empty {
+    padding: 4.5rem 1.5rem 4rem;
+    text-align: center;
+    position: relative;
+    background: radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.07) 0%, transparent 65%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty-badge-wrapper {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty-badge-glow {
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, transparent 70%);
+    filter: blur(8px);
+    animation: glow-pulse 3.5s ease-in-out infinite;
+}
+
+.empty-badge-core {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(5, 150, 105, 0.1) 100%);
+    border: 1.5px solid rgba(16, 185, 129, 0.45);
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #10b981;
+    font-size: 1.625rem;
+    animation: badge-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.empty-title {
+    color: var(--text-primary);
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.4rem;
+    line-height: 1.25;
+}
+
+.empty-description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    max-width: 420px;
+    margin: 0 auto;
+}
+
+@keyframes glow-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.15); opacity: 0.9; }
+}
+
+@keyframes badge-pop {
+    0% { transform: scale(0.88); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* Widget Content */
+.widget-content {
+    padding: 1.5rem;
+}
+
+/* Sections */
+.assignments-section {
+    margin-bottom: 1.75rem;
+}
+
+.assignments-section:last-of-type {
+    margin-bottom: 0;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.875rem;
+    padding-bottom: 0.55rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.section-title i {
+    font-size: 0.85rem;
+    color: var(--primary-color, #3b82f6);
+}
+
+.missed-section .section-title i {
+    color: #f43f5e;
+}
+
+/* Assignments List */
+.assignments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Assignment Item (Read-Only Cockpit View - No Redirection) */
+.assignment-item {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.95rem 1.35rem;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg, 12px);
+    cursor: default;
+    user-select: text;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.assignment-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3.5px;
+    border-radius: 4px 0 0 4px;
+}
+
+.assignment-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--shadow-color);
+}
+
+.assignment-item.normal::before {
+    background: #3b82f6;
+    box-shadow: none;
+}
+.assignment-item.normal {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(37, 99, 235, 0.02) 100%), var(--bg-secondary);
+    border-color: rgba(96, 165, 250, 0.2);
+}
+.assignment-item.normal:hover {
+    border-color: rgba(96, 165, 250, 0.45);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.assignment-item.soon::before {
+    background: #f59e0b;
+    box-shadow: none;
+}
+.assignment-item.soon {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, rgba(202, 138, 4, 0.02) 100%), var(--bg-secondary);
+    border-color: rgba(251, 191, 36, 0.22);
+}
+.assignment-item.soon:hover {
+    border-color: rgba(251, 191, 36, 0.48);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.assignment-item.urgent::before {
+    background: #f97316;
+    box-shadow: none;
+}
+.assignment-item.urgent {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.07) 0%, rgba(217, 119, 6, 0.02) 100%), var(--bg-secondary);
+    border-color: rgba(251, 146, 60, 0.22);
+}
+.assignment-item.urgent:hover {
+    border-color: rgba(251, 146, 60, 0.48);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.assignment-item.missed::before {
+    background: #f43f5e;
+    box-shadow: none;
+}
+.assignment-item.missed {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.07) 0%, rgba(225, 29, 72, 0.02) 100%), var(--bg-secondary);
+    border-color: rgba(251, 113, 133, 0.24);
+}
+.assignment-item.missed:hover {
+    border-color: rgba(251, 113, 133, 0.52);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.assignment-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+}
+
+/* Course Name (Eyebrow on line 1) */
+.assignment-course-name {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    text-transform: uppercase;
+    letter-spacing: 0.075em;
+    line-height: 1.2;
+}
+
+[data-theme="light"] .assignment-course-name {
+    color: var(--text-secondary);
+}
+
+/* Assignment Title on line 2 */
+.assignment-title {
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: #f8fafc;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+    word-break: break-word;
+}
+
+[data-theme="light"] .assignment-title {
+    color: var(--text-primary);
+}
+
+/* Meta Column on Right */
+.assignment-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex: 0 1 14rem;
+    min-width: 0;
+    margin-left: 1rem;
+    text-align: right;
+}
+
+.assignment-deadline-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.825rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+
+.assignment-deadline-info i {
+    font-size: 0.78rem;
+    opacity: 0.85;
+}
+
+.assignment-deadline-info {
+    color: var(--text-secondary, #cbd5e1);
+}
+
+.assignment-deadline-info.soon,
+.assignment-deadline-info.urgent {
+    color: #fbbf24;
+}
+
+[data-theme="light"] .assignment-deadline-info.soon,
+[data-theme="light"] .assignment-deadline-info.urgent {
+    color: #92400e;
+}
+
+.assignment-countdown-value {
+    font-weight: 600;
+}
+
+.assignment-deadline-info.urgent .assignment-countdown-value {
+    font-weight: 800;
+}
+
+.assignment-countdown-suffix {
+    font-weight: 400;
+}
+
+.assignment-marks {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.assignment-marks i {
+    font-size: 0.7rem;
+    color: var(--warning-color, #f59e0b);
+}
+
+/* Urgency Badges - Compact Micro-Pills (when present) */
+.urgency-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.22rem 0.68rem;
+    border-radius: 99px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    margin-left: 1rem;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.urgency-badge.urgent {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 1px 4px rgba(217, 119, 6, 0.3);
+}
+
+.urgency-badge.soon {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+    .widget-summary-cards {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0;
+        margin-bottom: 1.25rem;
+    }
+
+    .widget-content {
+        padding: 1rem;
+    }
+
+    .assignment-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .assignment-meta {
+        margin-left: 0;
+        align-items: flex-start;
+        flex: auto;
+        text-align: left;
+        gap: 0.2rem;
+    }
+
+    .urgency-badge {
+        margin-left: 0;
+        align-self: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .widget-empty {
+        padding: 3.5rem 1rem 3rem;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    .summary-card,
+    .assignment-item,
+    .shimmer,
+    .empty-badge-glow,
+    .empty-badge-core {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+}
+</style>
+
+<!-- Widget Script -->
+<script>
+(function() {
+    'use strict';
+
+    const widgetState = {
+        isLoading: false,
+        isRefreshing: false,
+        autoRefreshInterval: null,
+        countdownInterval: null,
+        lastRefreshTime: null,
+        data: null
+    };
+
+    const elements = {
+        loading: document.getElementById('widgetLoading'),
+        error: document.getElementById('widgetError'),
+        empty: document.getElementById('widgetEmpty'),
+        content: document.getElementById('widgetContent'),
+        summaryCards: document.getElementById('widgetSummaryCards'),
+        pendingCount: document.getElementById('pendingCount'),
+        urgentCount: document.getElementById('urgentCount'),
+        missedCount: document.getElementById('missedCount'),
+        pendingList: document.getElementById('pendingList'),
+        missedList: document.getElementById('missedList'),
+        pendingSection: document.getElementById('pendingSection'),
+        missedSection: document.getElementById('missedSection'),
+        headerAgeIndicator: document.getElementById('assignmentsAgeIndicator'),
+        headerAgeIcon: document.getElementById('assignmentsAgeIcon'),
+        headerAgeText: document.getElementById('assignmentsAgeText'),
+        headerRefreshToggle: document.getElementById('refreshDataToggle')
+    };
+
+    let progressInterval = null;
+    let currentDisplayPct = 0;
+
+    function startProgressTicker() {
+        stopProgressTicker();
+        currentDisplayPct = 5;
+
+        const pill = elements.headerAgeIndicator || document.getElementById('assignmentsAgeIndicator');
+        const textEl = elements.headerAgeText || document.getElementById('assignmentsAgeText');
+        const iconEl = elements.headerAgeIcon || document.getElementById('assignmentsAgeIcon');
+
+        if (pill) {
+            pill.classList.remove('is-success', 'is-error');
+            pill.classList.add('is-syncing');
+        }
+        if (iconEl) {
+            iconEl.className = 'far fa-clock assignments-age-icon';
+        }
+        if (textEl) {
+            textEl.textContent = `Syncing ${currentDisplayPct}%`;
+        }
+
+        // Ambient dimming on existing content (Stale-While-Revalidate)
+        const summaryCards = elements.summaryCards || document.getElementById('widgetSummaryCards');
+        if (summaryCards) summaryCards.classList.add('is-refreshing-content');
+        if (elements.content) elements.content.classList.add('is-refreshing-content');
+        if (elements.empty) elements.empty.classList.add('is-refreshing-content');
+
+        const startTime = Date.now();
+        // Non-linear monotonic progression tuned for 10-15s pace:
+        // ~20% at 1.5s, ~50% at 4s, ~70% at 7s, ~84% at 11s, ~90% at 14s, asymptotic cap at 93%
+        progressInterval = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const targetPct = Math.min(93, Math.round(94 * (1 - Math.exp(-elapsed / 5.2))));
+            if (targetPct > currentDisplayPct) {
+                currentDisplayPct = targetPct;
+                if (textEl && pill && pill.classList.contains('is-syncing')) {
+                    textEl.textContent = `Syncing ${currentDisplayPct}%`;
+                }
+            }
+        }, 100);
+    }
+
+    function stopProgressTicker() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+        const summaryCards = elements.summaryCards || document.getElementById('widgetSummaryCards');
+        if (summaryCards) summaryCards.classList.remove('is-refreshing-content');
+        if (elements.content) elements.content.classList.remove('is-refreshing-content');
+        if (elements.empty) elements.empty.classList.remove('is-refreshing-content');
+    }
+
+    function completeProgressSuccess() {
+        stopProgressTicker();
+        const pill = elements.headerAgeIndicator || document.getElementById('assignmentsAgeIndicator');
+        const textEl = elements.headerAgeText || document.getElementById('assignmentsAgeText');
+        const iconEl = elements.headerAgeIcon || document.getElementById('assignmentsAgeIcon');
+
+        if (pill) {
+            pill.classList.remove('is-syncing', 'is-error');
+            pill.classList.add('is-success');
+        }
+        if (iconEl) {
+            iconEl.className = 'fas fa-check assignments-age-icon';
+        }
+        if (textEl) {
+            textEl.textContent = '100%';
+        }
+
+        setTimeout(() => {
+            if (pill) {
+                pill.classList.remove('is-success');
+            }
+            if (iconEl) {
+                iconEl.className = 'far fa-clock assignments-age-icon';
+            }
+            updateAgeIndicator(true);
+        }, 420);
+    }
+
+    function completeProgressError(errorMessage, isCooldown = false) {
+        stopProgressTicker();
+        const pill = elements.headerAgeIndicator || document.getElementById('assignmentsAgeIndicator');
+        const textEl = elements.headerAgeText || document.getElementById('assignmentsAgeText');
+        const iconEl = elements.headerAgeIcon || document.getElementById('assignmentsAgeIcon');
+
+        if (pill) {
+            pill.classList.remove('is-syncing', 'is-success');
+            pill.classList.add('is-error');
+        }
+        if (iconEl) {
+            iconEl.className = isCooldown ? 'fas fa-hourglass-half assignments-age-icon' : 'fas fa-exclamation-triangle assignments-age-icon';
+        }
+        if (textEl) {
+            textEl.textContent = isCooldown ? 'Cooldown active' : 'Sync failed';
+        }
+
+        setTimeout(() => {
+            if (pill) pill.classList.remove('is-error');
+            if (iconEl) iconEl.className = 'far fa-clock assignments-age-icon';
+            updateAgeIndicator(true);
+        }, 1800);
+    }
+
+    function triggerCountBump(el) {
+        if (!el) return;
+        el.classList.remove('count-bump');
+        void el.offsetWidth;
+        el.classList.add('count-bump');
+    }
+
+    function init() {
+        loadAssignments(false);
+        startAutoRefresh();
+    }
+
+    // Load assignments data (single round-trip SWR)
+    function loadAssignments(forceRefresh = false) {
+        if (widgetState.isLoading) return;
+
+        widgetState.isLoading = true;
+        if (!widgetState.data) {
+            showLoading();
+        }
+
+        if (forceRefresh) {
+            startProgressTicker();
+        }
+
+        // Timer for slow LMS connection warning banner (triggers after 6s of waiting)
+        let slowBannerTimer = setTimeout(() => {
+            if (widgetState.isLoading && typeof window.showLMSBanner === 'function') {
+                window.showLMSBanner(
+                    'LMS responding slowly',
+                    'LMS+ is on it — just waiting for university servers to answer.',
+                    false
+                );
+            }
+        }, 6000);
+
+        const url = forceRefresh 
+            ? '/lms/api/dashboard/pending-assignments?force_refresh=true'
+            : '/lms/api/dashboard/pending-assignments';
+
+        fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (response.status === 429) {
+                return response.json().then(err => {
+                    const errObj = new Error(err.error || 'Please wait before refreshing again.');
+                    errObj.status = 429;
+                    throw errObj;
+                });
+            }
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            widgetState.isLoading = false;
+
+            if (data.success) {
+                widgetState.data = data;
+                widgetState.lastRefreshTime = data.refreshed_at ? new Date(data.refreshed_at) : new Date();
+                renderAssignments(data);
+
+                // Auto-dismiss slow LMS banner if active
+                if (typeof window.hideLMSBanner === 'function') {
+                    window.hideLMSBanner();
+                }
+
+                if (forceRefresh) {
+                    completeProgressSuccess();
+                    if (typeof window.showFlashMessage === 'function') {
+                        window.showFlashMessage('Assignments refreshed successfully!', 'success');
+                    }
+                } else {
+                    updateAgeIndicator();
+                }
+            } else {
+                if (typeof window.showLMSBanner === 'function') {
+                    window.showLMSBanner(
+                        'LMS Connection Issue',
+                        data.user_message || data.error || 'The university LMS is currently not responding. This is an issue on the university\'s end.',
+                        true
+                    );
+                }
+                if (forceRefresh) {
+                    completeProgressError(data.error || 'Failed to load assignments', false);
+                } else {
+                    showError(data.error || 'Failed to load assignments');
+                }
+            }
+        })
+        .catch(error => {
+            widgetState.isLoading = false;
+            console.error('Error loading assignments:', error);
+            const isCooldown = (error && error.status === 429) || (error && error.message && error.message.toLowerCase().includes('wait'));
+
+            if (!isCooldown && typeof window.showLMSBanner === 'function') {
+                window.showLMSBanner(
+                    'LMS Offline',
+                    'Bahria LMS is not responding. This is an issue on university\'s side, not LMS+',
+                    true
+                );
+            }
+
+            if (forceRefresh) {
+                completeProgressError(error.message, isCooldown);
+                if (typeof window.showFlashMessage === 'function') {
+                    window.showFlashMessage(error.message || 'Failed to refresh data', 'error');
+                }
+            } else if (!widgetState.data) {
+                showError(error.message || 'Network error occurred. Please retry.');
+            }
+        })
+        .finally(() => {
+            if (slowBannerTimer) {
+                clearTimeout(slowBannerTimer);
+            }
+            resetHeaderRefreshButton();
+        });
+    }
+
+    // Render assignments to DOM
+    function renderAssignments(data) {
+        const prevPending = elements.pendingCount ? elements.pendingCount.textContent : '-';
+        const prevUrgent = elements.urgentCount ? elements.urgentCount.textContent : '-';
+        const prevMissed = elements.missedCount ? elements.missedCount.textContent : '-';
+
+        const newPending = String(data.total_pending || 0);
+        const newMissed = String(data.total_missed || 0);
+
+        const newUrgent = String(countUrgentAssignments(data.pending || []));
+
+        if (elements.pendingCount) elements.pendingCount.textContent = newPending;
+        if (elements.urgentCount) elements.urgentCount.textContent = newUrgent;
+        if (elements.missedCount) elements.missedCount.textContent = newMissed;
+
+        if (prevPending !== '-' && prevPending !== newPending) triggerCountBump(elements.pendingCount);
+        if (prevUrgent !== '-' && prevUrgent !== newUrgent) triggerCountBump(elements.urgentCount);
+        if (prevMissed !== '-' && prevMissed !== newMissed) triggerCountBump(elements.missedCount);
+
+        const hasAssignments = (data.total_pending > 0) || (data.total_missed > 0);
+
+        if (!hasAssignments) {
+            showEmpty();
+            return;
+        }
+
+        // Render Pending
+        if (data.pending && data.pending.length > 0) {
+            elements.pendingSection.style.display = 'block';
+            elements.pendingList.innerHTML = data.pending.map(a => renderAssignmentItem(a, false)).join('');
+        } else {
+            elements.pendingSection.style.display = 'none';
+        }
+
+        // Render Missed
+        if (data.missed && data.missed.length > 0) {
+            elements.missedSection.style.display = 'block';
+            elements.missedList.innerHTML = data.missed.map(a => renderAssignmentItem(a, true)).join('');
+        } else {
+            elements.missedSection.style.display = 'none';
+        }
+
+        showContent();
+    }
+
+    // Render Individual Assignment Card
+    function renderAssignmentItem(assignment, isMissed) {
+        const deadlineClass = countdownState(assignment);
+        const urgencyClass = isMissed ? 'missed' : (deadlineClass === 'normal' ? '' : 'soon');
+
+        // Course Name prominent (No course codes displayed)
+        const courseName = assignment.course_name || 'Course Deliverable';
+
+        return `
+            <div class="assignment-item ${urgencyClass}">
+                <div class="assignment-info">
+                    <div class="assignment-course-name">${escapeHtml(courseName)}</div>
+                    <div class="assignment-title">${escapeHtml(assignment.title || 'Untitled Assignment')}</div>
+                </div>
+                ${!isMissed || assignment.total_marks ? `<div class="assignment-meta">
+                    ${!isMissed ? `
+                    <div class="assignment-deadline-info ${deadlineClass}">
+                        <i class="far fa-clock" aria-hidden="true"></i>
+                        <span class="assignment-countdown" data-cutoff="${escapeHtml(assignment.deadline_datetime || '')}">${countdownMarkup(assignment)}</span>
+                    </div>
+                    ` : ''}
+                    ${assignment.total_marks ? `
+                    <div class="assignment-marks">
+                        <i class="fas fa-star"></i>
+                        <span>${assignment.total_marks} marks</span>
+                    </div>
+                    ` : ''}
+                </div>` : ''}
+            </div>
+        `;
+    }
+
+    function countdownHours(assignment) {
+        const cutoff = Date.parse(assignment.deadline_datetime);
+        return Number.isFinite(cutoff)
+            ? (cutoff - Date.now()) / 3600000
+            : assignment.hours_until_due;
+    }
+
+    function countUrgentAssignments(assignments) {
+        return assignments.filter(assignment => {
+            const hours = countdownHours(assignment);
+            return typeof hours === 'number' && Number.isFinite(hours) && hours > 0 && hours <= 24;
+        }).length;
+    }
+
+    function countdownState(assignment) {
+        const hours = countdownHours(assignment);
+        if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0 || hours > 24) return 'normal';
+        return hours < 3 ? 'urgent' : 'soon';
+    }
+
+    function countdownMarkup(assignment) {
+        const text = formatDeadline(assignment);
+        if (!text.endsWith(' left')) return escapeHtml(text);
+        return `<span class="assignment-countdown-value">${escapeHtml(text.slice(0, -5))}</span><span class="assignment-countdown-suffix"> left</span>`;
+    }
+
+    // Use the absolute cutoff so countdowns stay current between data refreshes.
+    function formatDeadline(assignment) {
+        const hours = countdownHours(assignment);
+        if (typeof hours !== 'number' || !Number.isFinite(hours)) return 'No deadline';
+        if (hours <= 0) return 'Submission closed';
+        if (hours < 1 / 60) return 'Less than 1m left';
+
+        // Round down: never suggest students have more time than remains.
+        const minutes = Math.floor(hours * 60);
+        const days = Math.floor(minutes / 1440);
+        const remainingHours = Math.floor(minutes / 60) % 24;
+        const remainingMinutes = minutes % 60;
+        if (days > 0) return `${days}d${remainingHours ? ` ${remainingHours}h` : ''} left`;
+        if (remainingHours > 0) return `${remainingHours}h${remainingMinutes ? ` ${remainingMinutes}m` : ''} left`;
+        return `${remainingMinutes}m left`;
+    }
+
+    function updateCountdowns() {
+        if (elements.urgentCount && widgetState.data) {
+            elements.urgentCount.textContent = String(countUrgentAssignments(widgetState.data.pending || []));
+        }
+        document.querySelectorAll('.assignment-countdown[data-cutoff]').forEach(label => {
+            if (!Number.isFinite(Date.parse(label.dataset.cutoff))) return;
+            const assignment = {deadline_datetime: label.dataset.cutoff};
+            label.innerHTML = countdownMarkup(assignment);
+            const state = countdownState(assignment);
+            label.parentElement.classList.remove('normal', 'soon', 'urgent');
+            label.parentElement.classList.add(state);
+            const card = label.closest('.assignment-item');
+            if (card && !card.classList.contains('missed')) {
+                card.classList.toggle('soon', state !== 'normal');
+            }
+        });
+    }
+
+    // Update Header Age Pill
+    function updateAgeIndicator(force = false) {
+        if (!force && widgetState.isRefreshing) return;
+        const ageTextEl = elements.headerAgeText || document.getElementById('assignmentsAgeText');
+        if (!ageTextEl) return;
+
+        if (!widgetState.lastRefreshTime) {
+            ageTextEl.textContent = 'Ready';
+            return;
+        }
+
+        const now = new Date();
+        const diff = now - widgetState.lastRefreshTime;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (minutes < 1) {
+            ageTextEl.textContent = 'Refreshed just now';
+        } else if (minutes < 60) {
+            ageTextEl.textContent = `Refreshed ${minutes}m ago`;
+        } else if (hours < 24) {
+            ageTextEl.textContent = `Refreshed ${hours}h ago`;
+        } else {
+            ageTextEl.textContent = `Refreshed ${days}d ago`;
+        }
+    }
+
+    function resetHeaderRefreshButton() {
+        const btn = elements.headerRefreshToggle || document.getElementById('refreshDataToggle');
+        if (btn) {
+            btn.classList.remove('is-refreshing');
+            btn.disabled = false;
+        }
+        widgetState.isRefreshing = false;
+    }
+
+    // Global refresh trigger (Called from top-right header button)
+    window.refreshAssignments = function() {
+        if (widgetState.isRefreshing || widgetState.isLoading) return;
+
+        const btn = elements.headerRefreshToggle || document.getElementById('refreshDataToggle');
+        if (btn) {
+            btn.classList.add('is-refreshing');
+            btn.disabled = true;
+        }
+        widgetState.isRefreshing = true;
+        loadAssignments(true);
+    };
+
+    window.reloadPendingAssignmentsWidget = function() {
+        loadAssignments(false);
+    };
+
+    function startAutoRefresh() {
+        widgetState.countdownInterval = setInterval(updateCountdowns, 30000);
+        setInterval(updateAgeIndicator, 60000);
+        widgetState.autoRefreshInterval = setInterval(() => {
+            if (!widgetState.isLoading && !widgetState.isRefreshing) {
+                loadAssignments(false);
+            }
+        }, 300000);
+    }
+
+    function showLoading() {
+        elements.loading.style.display = 'block';
+        elements.error.style.display = 'none';
+        elements.empty.style.display = 'none';
+        elements.content.style.display = 'none';
+    }
+
+    function showError(message) {
+        elements.loading.style.display = 'none';
+        elements.error.style.display = 'block';
+        elements.empty.style.display = 'none';
+        elements.content.style.display = 'none';
+        const msgEl = document.getElementById('errorMessage');
+        if (msgEl) msgEl.textContent = message;
+    }
+
+    function showEmpty() {
+        elements.loading.style.display = 'none';
+        elements.error.style.display = 'none';
+        elements.empty.style.display = 'flex';
+        elements.content.style.display = 'none';
+    }
+
+    function showContent() {
+        elements.loading.style.display = 'none';
+        elements.error.style.display = 'none';
+        elements.empty.style.display = 'none';
+        elements.content.style.display = 'block';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    window.addEventListener('beforeunload', () => {
+        clearInterval(widgetState.countdownInterval);
+        if (widgetState.autoRefreshInterval) {
+            clearInterval(widgetState.autoRefreshInterval);
+        }
+    });
+})();
+</script>

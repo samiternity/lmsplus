@@ -1,0 +1,5 @@
+project_id = "lms-plus-proxy"
+
+[functions.proxy]
+# Flask uses the function's dedicated service credential.
+verify_jwt = false

@@ -1,0 +1,829 @@
+{% extends "base.html" %}
+
+{% block title %}Provisional Results | LMS+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Scoped styles for Provisional Results */
+    
+    /* Fix flexbox canvas resize bug */
+    .main-content, .content {
+        min-width: 0;
+    }
+
+    .results-header {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-box {
+        background-color: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+        border: 1px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
+        border-left: 4px solid var(--primary-color);
+        border-radius: var(--border-radius-lg);
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        transition: var(--transition);
+    }
+    
+    .stat-box:hover {
+        border-color: var(--primary-color);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.05);
+        transform: translateY(-2px);
+    }
+    
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        background-color: color-mix(in srgb, var(--primary-color) 20%, transparent);
+        color: var(--primary-color);
+    }
+    
+    [data-theme="dark"] .stat-box {
+        background-color: color-mix(in srgb, var(--primary-color) 8%, var(--bg-secondary));
+    }
+    
+    .stat-content {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1.2;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-top: 0.25rem;
+    }
+    
+    .chart-card {
+        margin-bottom: 2rem;
+        border-radius: var(--border-radius-lg);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        min-width: 0; /* Prevents canvas from resisting container shrink */
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 260px; /* Reduced for better laptop viewport fit */
+        width: 100%;
+        min-width: 0; /* Prevents canvas from resisting container shrink */
+        padding: 0.5rem 0;
+    }
+    
+    .semester-card {
+        margin-bottom: 2rem;
+        border-radius: var(--border-radius-lg);
+        overflow: hidden;
+        background-color: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    }
+    
+    .semester-card:hover {
+        border-color: color-mix(in srgb, var(--primary-color) 30%, transparent);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.04);
+    }
+
+    .semester-card::before {
+        content: '';
+        display: block;
+        height: 3px;
+        width: 100%;
+        background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color) 50%, transparent));
+    }
+    
+    .semester-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        background-color: color-mix(in srgb, var(--primary-color) 2%, var(--bg-secondary));
+    }
+    
+    .semester-title {
+        font-weight: 600;
+        font-size: 1.125rem;
+        color: var(--text-primary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .semester-sgpa {
+        background-color: var(--bg-primary);
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    
+    .results-table {
+        margin-bottom: 0;
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .results-table th {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        padding: 1rem 1.5rem;
+        background-color: var(--bg-primary);
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .results-table tbody tr {
+        transition: background-color 0.2s ease;
+    }
+    
+    .results-table tbody tr:hover {
+        background-color: color-mix(in srgb, var(--primary-color) 3%, transparent);
+    }
+    
+    .results-table td {
+        padding: 1rem 1.5rem;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .results-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .course-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.875rem;
+        background-color: var(--bg-secondary);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+    
+    .course-name {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    
+    .grade-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+    
+    /* Dynamic grade colors tracking global tokens */
+    .grade-A { background-color: color-mix(in srgb, var(--success-color) 15%, transparent); color: var(--success-color); }
+    .grade-B { background-color: color-mix(in srgb, var(--info-color) 15%, transparent); color: var(--info-color); }
+    .grade-C { background-color: color-mix(in srgb, var(--warning-color) 15%, transparent); color: var(--warning-color); }
+    .grade-D, .grade-F { background-color: color-mix(in srgb, var(--error-color) 15%, transparent); color: var(--error-color); }
+    .grade-I, .grade-W { background-color: color-mix(in srgb, var(--secondary-color) 15%, transparent); color: var(--secondary-color); }
+    
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    
+    .empty-state {
+        text-align: center;
+        padding: 5rem 2rem;
+    }
+    
+    .empty-state-icon {
+        font-size: 4rem;
+        color: var(--text-muted);
+        margin-bottom: 1.5rem;
+        opacity: 0.5;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.5rem;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+    }
+    
+    .empty-state p {
+        color: var(--text-secondary);
+        max-width: 450px;
+        margin: 0 auto;
+        line-height: 1.6;
+    }
+    
+    /* Table responsive wrapper */
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    @media (max-width: 768px) {
+        .results-table th, .results-table td {
+            padding: 0.75rem 1rem;
+        }
+        
+        .results-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .header-actions {
+            width: 100%;
+        }
+        
+        .header-actions .btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+    
+    /* Animation & Interaction Sequence (Impeccable Animate) */
+    
+    /* 1. Rich Hover States */
+    .stat-box:hover .stat-icon {
+        transform: scale(1.15) rotate(8deg);
+    }
+    .stat-icon {
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .results-table tbody tr {
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .results-table tbody tr:hover {
+        background-color: var(--bg-tertiary);
+        transform: translateX(6px);
+    }
+    
+    .grade-badge {
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .results-table tbody tr:hover .grade-badge {
+        transform: scale(1.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn:active {
+        transform: scale(0.96);
+        transition: transform 0.1s;
+    }
+    
+    /* 2. Scroll & Load Animations */
+    @media (prefers-reduced-motion: no-preference) {
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            will-change: opacity, transform;
+        }
+        
+        .animate-on-scroll.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Specific delays for sequential reveals if they enter together */
+        .delay-100 { transition-delay: 100ms; }
+        .delay-200 { transition-delay: 200ms; }
+        .delay-300 { transition-delay: 300ms; }
+    }
+    
+    /* Number counter specific width preservation to avoid layout shift */
+    .counter-value {
+        display: inline-block;
+        font-variant-numeric: tabular-nums;
+    }
+</style>
+{% endblock %}
+
+{% block header_actions %}
+<div class="refresh-data-widget" style="margin-right: 1rem;">
+    <button class="refresh-data-toggle" onclick="refreshProvisionalResults()" id="refreshDataToggle" title="Refresh Provisional Results" aria-label="Refresh Provisional Results">
+        <i class="fas fa-sync-alt refresh-icon"></i>
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Unified Refresh Loading State -->
+<div id="resultsLoadingState" class="unified-loading-container" style="display: none;">
+    <div class="unified-loading-card">
+        <div class="unified-loading-icon">
+            <i class="fas fa-graduation-cap"></i>
+        </div>
+        <h3 class="unified-loading-title">Refreshing Results</h3>
+        <p id="loadingStatusText" class="unified-loading-status">Connecting to CMS Portal...</p>
+
+        <div class="unified-progress-bar-wrap">
+            <div class="unified-progress-bar" id="unifiedProgressBar" style="width: 0%"></div>
+        </div>
+
+        <div class="unified-steps" id="unifiedSteps">
+            <div class="unified-step active" id="step-connect">
+                <span class="step-dot"></span>
+                <span class="step-label">Connecting to CMS</span>
+            </div>
+            <div class="unified-step" id="step-scrape">
+                <span class="step-dot"></span>
+                <span class="step-label">Fetching exam & provisional grades</span>
+            </div>
+            <div class="unified-step" id="step-analyze">
+                <span class="step-dot"></span>
+                <span class="step-label">Calculating GPA, CGPA & credit hours</span>
+            </div>
+            <div class="unified-step" id="step-finalize">
+                <span class="step-dot"></span>
+                <span class="step-label">Finalizing academic summary</span>
+            </div>
+        </div>
+
+        <p id="loadingSubtext" class="unified-loading-attempt">Authenticating session with university portal...</p>
+    </div>
+</div>
+
+<div id="resultsMainContent">
+<div class="results-header animate-on-scroll" style="display:none;"></div>
+
+{% if gpa_data and gpa_data.semesters %}
+<div class="summary-grid">
+    <div class="stat-box animate-on-scroll">
+        <div class="stat-icon">
+            <i class="fas fa-graduation-cap"></i>
+        </div>
+        <div class="stat-content">
+            <span class="stat-value counter-value" data-target="{{ gpa_data.current_cgpa or 0 }}" data-decimals="2">{{ gpa_data.current_cgpa or 'N/A' }}</span>
+            <span class="stat-label">Cumulative GPA</span>
+        </div>
+    </div>
+    
+    <div class="stat-box animate-on-scroll delay-100">
+        <div class="stat-icon">
+            <i class="fas fa-book"></i>
+        </div>
+        <div class="stat-content">
+            <span class="stat-value counter-value" data-target="{{ gpa_data.total_credit_hours or 0 }}">{{ gpa_data.total_credit_hours or 'N/A' }}</span>
+            <span class="stat-label">Total Credits</span>
+        </div>
+    </div>
+    
+    <div class="stat-box animate-on-scroll delay-200">
+        <div class="stat-icon">
+            <i class="fas fa-history"></i>
+        </div>
+        <div class="stat-content">
+            <span class="stat-value counter-value" data-target="{{ gpa_data.semesters|length }}">{{ gpa_data.semesters|length }}</span>
+            <span class="stat-label">Semesters Completed</span>
+        </div>
+    </div>
+</div>
+
+<div class="card chart-card animate-on-scroll delay-300">
+    <div class="card-body">
+        <div class="chart-container">
+            <canvas id="gpaTrendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="semesters-container">
+    {% for semester in gpa_data.semesters %}
+    <div class="card semester-card animate-on-scroll" style="transition-delay: {{ loop.index0 * 50 }}ms;">
+        <div class="semester-header">
+            <h3 class="semester-title">
+                <i class="fas fa-calendar-alt" style="color: var(--text-muted);"></i>
+                {{ semester.semester_name }}
+            </h3>
+            <div class="semester-sgpa">
+                SGPA: {{ semester.sgpa }}
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table results-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%">Code</th>
+                        <th style="width: 55%">Course Title</th>
+                        <th class="text-right" style="width: 15%">Credits</th>
+                        <th class="text-center" style="width: 15%">Grade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in semester.courses %}
+                    <tr>
+                        <td><span class="course-code">{{ course.code }}</span></td>
+                        <td><div class="course-name">{{ course.name }}</div></td>
+                        <td class="text-right" style="color: var(--text-secondary); font-weight: 500;">{{ course.credit_hours }}</td>
+                        <td class="text-center">
+                            {% set grade_prefix = course.grade|first if course.grade else 'N' %}
+                            <span class="grade-badge grade-{{ grade_prefix }}">{{ course.grade }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body empty-state">
+        <div class="empty-state-icon">
+            <i class="fas fa-folder-open"></i>
+        </div>
+        <h3>No Results Available</h3>
+        <p>We couldn't find any provisional results data for your account. Try refreshing to fetch the latest data from the CMS.</p>
+        <div style="margin-top: 1.5rem;">
+            <button onclick="refreshProvisionalResults()" class="btn btn-primary" id="emptyStateFetchBtn">
+                <i class="fas fa-sync-alt"></i> Fetch Data
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+</div><!-- /#resultsMainContent -->
+
+<script>
+function refreshProvisionalResults() {
+    const button = document.getElementById('refreshDataToggle');
+    const icon = button ? button.querySelector('.refresh-icon, i') : null;
+    
+    // 1. Lock header button in clean spinning state
+    if (button) {
+        button.classList.add('is-refreshing');
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
+    if (icon) {
+        icon.className = 'fas fa-sync-alt refresh-icon';
+    }
+
+    // 2. Reveal Unified Loading Card & hide main content
+    const mainContent = document.getElementById('resultsMainContent');
+    const loadingState = document.getElementById('resultsLoadingState');
+    if (mainContent) mainContent.style.display = 'none';
+    if (loadingState) {
+        loadingState.style.display = 'flex';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 3. Dynamic Steps & Progress State Machine
+    const STEPS = [
+        { id: 'step-connect',  pct: 22, status: 'Connecting to CMS Portal...', subtext: 'Authenticating session with university portal...' },
+        { id: 'step-scrape',   pct: 54, status: 'Fetching exam & provisional grades...', subtext: 'Scraping latest semester exam transcripts...' },
+        { id: 'step-analyze',  pct: 82, status: 'Calculating GPA, CGPA & credit hours...', subtext: 'Tabulating grade points and cumulative index...' },
+        { id: 'step-finalize', pct: 96, status: 'Finalizing academic summary...', subtext: 'Preparing provisional results breakdown...' }
+    ];
+
+    const progressBar = document.getElementById('unifiedProgressBar');
+    const statusText = document.getElementById('loadingStatusText');
+    const subtextEl = document.getElementById('loadingSubtext');
+
+    function setStepState(index) {
+        const step = STEPS[index];
+        if (statusText) statusText.textContent = step.status;
+        if (subtextEl) subtextEl.textContent = step.subtext;
+        if (progressBar) progressBar.style.width = step.pct + '%';
+
+        STEPS.forEach((s, idx) => {
+            const el = document.getElementById(s.id);
+            if (!el) return;
+            el.classList.remove('active', 'done');
+            if (idx < index) el.classList.add('done');
+            else if (idx === index) el.classList.add('active');
+        });
+    }
+
+    setStepState(0);
+    setTimeout(() => setStepState(1), 1400);
+    setTimeout(() => setStepState(2), 3400);
+    setTimeout(() => setStepState(3), 5800);
+
+    // 4. Navigate to backend refresh endpoint
+    window.location.href = '{{ url_for("gpa.refresh_provisional_results") }}';
+}
+window.refreshProvisionalResults = refreshProvisionalResults;
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const gpaData = {{ gpa_data | tojson | safe }};
+
+        if (gpaData && gpaData.semesters && gpaData.semesters.length > 0) {
+            // Filter out semesters with invalid SGPA (0 or null)
+            const validSemesters = gpaData.semesters.filter(s => s.sgpa && s.sgpa > 0);
+
+            if (validSemesters.length === 0) {
+                document.getElementById('gpaTrendChart').parentElement.innerHTML =
+                    '<div class="text-center text-secondary" style="padding-top: 5rem;"><p>No valid semester data available for chart</p></div>';
+                return;
+            }
+
+            const labels = validSemesters.map(s => s.semester_name);
+            const sgpas = validSemesters.map(s => s.sgpa);
+
+            // Calculate cumulative GPA for each semester
+            let cumulativePoints = 0;
+            let cumulativeCredits = 0;
+            const cgpas = [];
+
+            for (let i = 0; i < validSemesters.length; i++) {
+                const semester = validSemesters[i];
+                let semesterPoints = 0;
+                let semesterCredits = 0;
+
+                for (const course of semester.courses || []) {
+                    if (course.credit_hours > 0 && course.grade_points > 0) {
+                        semesterPoints += course.credit_hours * course.grade_points;
+                        semesterCredits += course.credit_hours;
+                    }
+                }
+
+                cumulativePoints += semesterPoints;
+                cumulativeCredits += semesterCredits;
+
+                const cgpa = cumulativeCredits > 0 ? cumulativePoints / cumulativeCredits : 0;
+                cgpas.push(Math.round(cgpa * 100) / 100);
+            }
+
+            // Theme detection for chart colors
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const textColor = isDark ? '#f8fafc' : '#1e293b';
+            const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            
+            // Primary colors from CSS variables if possible, otherwise hardcoded
+            const style = getComputedStyle(document.documentElement);
+            const primaryColor = style.getPropertyValue('--primary-color').trim() || '#3b82f6';
+            const secondaryColor = style.getPropertyValue('--accent-color').trim() || '#f59e0b';
+
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+            const ctx = document.getElementById('gpaTrendChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Semester GPA (SGPA)',
+                            data: sgpas,
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderColor: primaryColor,
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 5,
+                            pointBackgroundColor: primaryColor,
+                            pointBorderColor: isDark ? '#0f172a' : '#fff',
+                            pointBorderWidth: 2,
+                            pointHoverRadius: 7
+                        },
+                        {
+                            label: 'Cumulative GPA (CGPA)',
+                            data: cgpas,
+                            backgroundColor: 'transparent',
+                            borderColor: secondaryColor,
+                            borderWidth: 3,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 5,
+                            pointBackgroundColor: secondaryColor,
+                            pointBorderColor: isDark ? '#0f172a' : '#fff',
+                            pointBorderWidth: 2,
+                            pointHoverRadius: 7
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: prefersReducedMotion ? false : {
+                        duration: 1200,
+                        easing: 'easeOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100 + context.datasetIndex * 100;
+                            }
+                            return delay;
+                        }
+                    },
+                    hover: {
+                        mode: 'nearest',
+                        intersect: true,
+                        animationDuration: prefersReducedMotion ? 0 : 300
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: Math.max(0, Math.min(...sgpas, ...cgpas) - 0.5),
+                            max: 4.0,
+                            ticks: {
+                                stepSize: 0.5,
+                                color: textColor,
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'GPA',
+                                color: textColor,
+                                font: {
+                                    family: "'Inter', sans-serif",
+                                    size: 13,
+                                    weight: '600'
+                                }
+                            },
+                            grid: {
+                                color: gridColor,
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: textColor,
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                },
+                                maxRotation: 45,
+                                minRotation: 0
+                            },
+                            grid: {
+                                color: gridColor,
+                                drawBorder: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                            titleColor: textColor,
+                            bodyColor: textColor,
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1,
+                            padding: 12,
+                            boxPadding: 6,
+                            usePointStyle: true,
+                            titleFont: {
+                                family: "'Inter', sans-serif",
+                                size: 14,
+                                weight: '600'
+                            },
+                            bodyFont: {
+                                family: "'Inter', sans-serif",
+                                size: 13
+                            },
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.dataset.label;
+                                    const value = Math.round(context.raw * 100) / 100;
+                                    return `${label}: ${value}`;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20,
+                                color: textColor,
+                                font: {
+                                    family: "'Inter', sans-serif",
+                                    size: 12,
+                                    weight: '500'
+                                },
+                                boxWidth: 8
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Listen for theme changes to update chart colors
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.attributeName === 'data-theme') {
+                        // Reload page to re-render chart with correct theme colors
+                        // We could update chart instance directly but reloading is cleaner for now
+                        window.location.reload();
+                    }
+                });
+            });
+            
+            observer.observe(document.documentElement, { attributes: true });
+        } else {
+            document.getElementById('gpaTrendChart').parentElement.innerHTML =
+                '<div class="text-center text-secondary" style="padding-top: 5rem;"><p>No GPA data available</p></div>';
+        }
+        
+        // --- 3. Scroll & Load Intersections ---
+        const scrollObserverOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        const scrollObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    
+                    // Trigger counter animation if it's a stat-box
+                    if (entry.target.classList.contains('stat-box')) {
+                        const counter = entry.target.querySelector('.counter-value');
+                        if (counter) animateCounter(counter);
+                    }
+                    
+                    // Clean up GPU composite memory after transition completes
+                    entry.target.addEventListener('transitionend', function handler(e) {
+                        if (e.propertyName === 'opacity') {
+                            entry.target.style.willChange = 'auto';
+                            entry.target.removeEventListener('transitionend', handler);
+                        }
+                    });
+                    
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, scrollObserverOptions);
+
+        document.querySelectorAll('.animate-on-scroll').forEach((el) => {
+            scrollObserver.observe(el);
+        });
+
+        // --- 4. Number Counter Animation ---
+        function animateCounter(el) {
+            const target = parseFloat(el.getAttribute('data-target'));
+            const decimals = el.hasAttribute('data-decimals') ? parseInt(el.getAttribute('data-decimals')) : 0;
+            if (isNaN(target)) return;
+            
+            let startTimestamp = null;
+            const duration = 1200; // ms
+            
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                
+                // easeOutQuart
+                const easeProgress = 1 - Math.pow(1 - progress, 4);
+                const current = easeProgress * target;
+                
+                el.innerText = current.toFixed(decimals);
+                
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    el.innerText = target.toFixed(decimals);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+    });
+</script>
+{% endblock %}

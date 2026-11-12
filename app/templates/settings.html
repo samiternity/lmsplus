@@ -1,0 +1,1572 @@
+{% extends "base.html" %}
+
+{% block title %}Settings | LMS+{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <div class="settings-grid">
+        <!-- Row 1 Left: Appearance -->
+        <div class="settings-card card-appearance">
+            <div class="settings-card-header">
+                <div class="settings-card-icon"><i class="fas fa-palette" aria-hidden="true"></i></div>
+                <div class="settings-card-title">
+                    <h3>Appearance</h3>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <form method="POST" action="{{ url_for('settings.update_theme') }}" id="themeForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="theme-selector" role="radiogroup" aria-label="Theme selection">
+                        <label class="theme-card {% if user_settings.theme == 'light' %}active{% endif %}">
+                            <input type="radio" name="theme" value="light" {% if user_settings.theme=='light' %}checked{% endif %}>
+                            <div class="theme-card-preview light" aria-hidden="true">
+                                <div class="preview-header"></div>
+                                <div class="preview-sidebar"></div>
+                                <div class="preview-content">
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line short"></div>
+                                </div>
+                            </div>
+                            <span class="theme-card-label"><i class="fas fa-sun" aria-hidden="true"></i> Light</span>
+                        </label>
+
+                        <label class="theme-card {% if user_settings.theme == 'dark' %}active{% endif %}">
+                            <input type="radio" name="theme" value="dark" {% if user_settings.theme=='dark' %}checked{% endif %}>
+                            <div class="theme-card-preview dark" aria-hidden="true">
+                                <div class="preview-header"></div>
+                                <div class="preview-sidebar"></div>
+                                <div class="preview-content">
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line short"></div>
+                                </div>
+                            </div>
+                            <span class="theme-card-label"><i class="fas fa-moon" aria-hidden="true"></i> Dark</span>
+                        </label>
+
+                        <label class="theme-card {% if user_settings.theme == 'system' %}active{% endif %}">
+                            <input type="radio" name="theme" value="system" {% if user_settings.theme=='system' %}checked{% endif %}>
+                            <div class="theme-card-preview system" aria-hidden="true">
+                                <div class="preview-header"></div>
+                                <div class="preview-sidebar"></div>
+                                <div class="preview-content">
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line short"></div>
+                                </div>
+                            </div>
+                            <span class="theme-card-label"><i class="fas fa-desktop" aria-hidden="true"></i> System</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Row 1 Right: Discord Integration -->
+        <div class="settings-card card-discord {% if not current_user.discord_id %}is-unlinked{% endif %}">
+            <div class="settings-card-header">
+                <div class="settings-card-icon"><i class="fab fa-discord" aria-hidden="true"></i></div>
+                <div class="settings-card-title">
+                    <h3>Discord Integration</h3>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                {% if not discord_app_configured %}
+                <div class="discord-unconfigured">
+                    <p><i class="fas fa-exclamation-triangle text-warning" aria-hidden="true"></i> Discord integration is not currently configured on this server.</p>
+                </div>
+                {% elif current_user.discord_id %}
+                <div class="discord-status-container">
+                    <div class="discord-status-text">
+                        <div class="status-dot-active" aria-hidden="true"></div>
+                        <span class="status-badge-text">Connected</span>
+                    </div>
+                    <div class="discord-actions">
+                        {% if not is_production %}
+                        <button id="testDiscordBtn" type="button" class="btn-discord-secondary">
+                            <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                            <span>Send Test DM</span>
+                        </button>
+                        {% endif %}
+                        <form method="POST" action="{{ url_for('discord_oauth.unlink') }}" style="margin: 0;" onsubmit="return confirm('Are you sure you want to unlink your Discord account? You will stop receiving Discord notifications.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="btn-unlink" title="Unlink Discord account">
+                                <i class="fas fa-unlink" aria-hidden="true"></i>
+                                <span>Unlink</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <div class="discord-status-container">
+                    <div class="discord-status-text">
+                        <div class="status-dot-inactive" aria-hidden="true"></div>
+                        <span class="status-badge-text muted">Not Connected</span>
+                    </div>
+                    <a href="{{ url_for('discord_oauth.login') }}" class="btn-connect-discord">
+                        <span class="discord-icon-disc" aria-hidden="true">
+                            <i class="fab fa-discord"></i>
+                        </span>
+                        <span>Connect Discord</span>
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Notification Preferences Card -->
+        <div class="settings-card card-notifications">
+            <div class="settings-card-header">
+                <div class="settings-card-icon"><i class="fas fa-bell" aria-hidden="true"></i></div>
+                <div class="settings-card-title">
+                    <h3>Notification Preferences</h3>
+                </div>
+            </div>
+            <div class="settings-card-body notifications-body">
+                {% if not current_user.discord_id %}
+                <div class="notifications-locked-overlay" role="status">
+                    <div class="locked-icon-wrapper" aria-hidden="true">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <div class="locked-heading">Connect Discord above to unlock alerts</div>
+                </div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('settings.update_notifications') }}" id="notificationForm" class="{% if not current_user.discord_id %}is-locked{% endif %}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="notification-sections-grid">
+                        <!-- Left Subgrid: Assignments -->
+                        <div class="notification-section">
+                            <div class="section-label">
+                                <i class="fas fa-tasks" aria-hidden="true"></i>
+                                <span>Assignments</span>
+                            </div>
+                            <div class="notification-toggles assignment-subgrid">
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">New Assignment</span>
+                                        <span class="toggle-desc">When a new assignment is posted</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="new_assignment" {% if notification_settings.get('new_assignment', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">Due in 24 Hours</span>
+                                        <span class="toggle-desc">Alert 24 hours before deadline</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="due_24h" {% if notification_settings.get('due_24h', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">Due in 3 Days</span>
+                                        <span class="toggle-desc">Alert 3 days before deadline</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="due_3d" {% if notification_settings.get('due_3d', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">Overdue Warning</span>
+                                        <span class="toggle-desc">When an assignment becomes overdue</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="overdue_warning" {% if notification_settings.get('overdue_warning', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Right Subgrid: Attendance -->
+                        <div class="notification-section">
+                            <div class="section-label">
+                                <i class="fas fa-clipboard-check" aria-hidden="true"></i>
+                                <span>Attendance</span>
+                            </div>
+                            <div class="notification-toggles attendance-subgrid">
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">Absent (Scheduled)</span>
+                                        <span class="toggle-desc">When marked absent in a regular timetable lecture</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="absent_scheduled" {% if notification_settings.get('absent_scheduled', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+
+                                <label class="notification-toggle">
+                                    <div class="toggle-info">
+                                        <span class="toggle-title">Absent (Extra Class)</span>
+                                        <span class="toggle-desc">When marked absent in an unscheduled or makeup class</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" name="absent_unscheduled" {% if notification_settings.get('absent_unscheduled', False) %}checked{% endif %}>
+                                        <span class="toggle-slider"></span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if connector_available or connector_connections %}
+        {% set connected_count = connector_connections | selectattr('connected') | list | length %}
+        <!-- MCP Server -->
+        <section class="settings-card claude-settings" id="claude-connections" aria-labelledby="claude-connections-title">
+            <div class="settings-card-header">
+                <div class="settings-card-icon">
+                    <span class="mcp-mark" aria-hidden="true"></span>
+                </div>
+                <div class="settings-card-title">
+                    <h3 id="claude-connections-title">MCP Server</h3>
+                    {% if connector_available and not connected_count %}
+                    <p class="mcp-description">Ask about pending assignments in your AI app. LMS+ brings the files into the chat.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="settings-card-body claude-body">
+                <ul class="mcp-connections" aria-label="AI app connections">
+                    {% set clients = [('claude', 'Claude'), ('chatgpt', 'ChatGPT')] %}
+                    {% if connector_available or connector_connections | rejectattr('provider', 'in', ['claude', 'chatgpt']) | list %}
+                    {% set clients = clients + [('other', 'Other apps')] %}
+                    {% endif %}
+                    {% for client, client_label in clients %}
+                    {% set records = connector_connections | selectattr('provider', 'equalto', client) | list %}
+                    {% if client == 'other' %}
+                    {% set records = connector_connections | rejectattr('provider', 'in', ['claude', 'chatgpt']) | list %}
+                    {% endif %}
+                    {% set connected = records | selectattr('connected') | list | length %}
+                    <li>
+                        <div class="mcp-connection-label">
+                            <span class="mcp-provider-mark" aria-hidden="true">
+                                {% if client == 'claude' %}
+                                <img src="{{ url_for('static', filename='images/claude.svg') }}" width="20" height="20" alt="">
+                                {% elif client == 'chatgpt' %}
+                                <span class="mcp-openai-icon"></span>
+                                {% else %}
+                                <span class="mcp-mark"></span>
+                                {% endif %}
+                            </span>
+                            <span class="mcp-connection-state">
+                                <strong>{{ client_label }}</strong>
+                                <span class="mcp-connection-status">
+                                    <span class="{{ 'status-dot-active' if connected else 'status-dot-inactive' }}" aria-hidden="true"></span>
+                                    {% if client == 'other' %}
+                                    {{ '%d connected' | format(connected) if connected else 'Setup incomplete' if records else 'No connections' }}
+                                    {% else %}
+                                    {{ 'Connected' if connected else 'Setup incomplete' if records else 'Not connected' }}
+                                    {% endif %}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="mcp-connection-actions">
+                            {% for connection in records %}
+                            <form method="post" action="{{ url_for('assignment_connector.disconnect', connection_id=connection.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn claude-disconnect"
+                                        aria-label="{{ 'Disconnect' if connection.connected else 'Cancel setup for' }} {{ connection.app_label if client == 'other' else client_label }}{% if records | length > 1 %} connection {{ loop.index }}{% endif %}">
+                                    {{ 'Disconnect' if connection.connected else 'Cancel setup' }}{% if client == 'other' %} {{ connection.app_label }}{% endif %}{% if records | length > 1 %} {{ loop.index }}{% endif %}
+                                </button>
+                            </form>
+                            {% endfor %}
+                            {% if connector_available %}
+                            <button type="button" class="btn mcp-setup-button" data-mcp-open="{{ client }}"
+                                    aria-label="Setup instructions for {{ client_label }}"
+                                    aria-expanded="false" aria-controls="mcp-panel-{{ client }}" hidden>
+                                <svg class="mcp-setup-chevron" width="18" height="18" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                    <path d="m6 9 6 6 6-6"/>
+                                </svg>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if connected_count %}
+                <p class="mcp-examples"><strong>Try asking</strong> “List my pending assignments.”</p>
+                {% endif %}
+                {% if connector_available %}
+                <details id="mcp-setup" class="mcp-setup">
+                    <summary class="claude-panel-toggle">
+                        <span>Setup and troubleshooting</span>
+                        <i class="fas fa-chevron-down claude-setup-chevron" aria-hidden="true"></i>
+                    </summary>
+                    <div class="mcp-setup-reveal" data-mcp-reveal>
+                    <div class="mcp-setup-clip">
+                    <div class="mcp-setup-guide" data-mcp-guide>
+                        {% macro mcp_url_field(client) %}
+                            <div class="mcp-url-field">
+                                <i class="fas fa-link mcp-url-icon" aria-hidden="true"></i>
+                                <input id="mcp-{{ client }}-url" class="claude-field" type="url"
+                                       aria-label="Connector link" value="{{ connector_url }}" readonly>
+                                <button type="button" class="btn mcp-copy-button" data-claude-copy="mcp-{{ client }}-url"
+                                        aria-describedby="mcp-{{ client }}-copy-status" hidden>
+                                    <span class="claude-copy-icon" aria-hidden="true"><i class="far fa-copy"></i><i class="fas fa-check"></i></span>
+                                    Copy
+                                </button>
+                            </div>
+                            <p class="claude-copy-status" id="mcp-{{ client }}-copy-status" role="status"></p>
+                        {% endmacro %}
+                        {% for client, client_label in [('claude', 'Claude'), ('chatgpt', 'ChatGPT')] %}
+                        <section class="mcp-guide-panel" id="mcp-panel-{{ client }}" aria-labelledby="mcp-title-{{ client }}" tabindex="-1">
+                            <h4 class="mcp-guide-heading" id="mcp-title-{{ client }}">{{ client_label }}</h4>
+                            {% if client == 'chatgpt' %}
+                            <div class="mcp-plan-note">
+                                <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                <p><strong>Paid ChatGPT plan required.</strong> Use Pro or a Business, Enterprise, or Edu workspace with custom plugins enabled.</p>
+                            </div>
+                            {% endif %}
+                            <ol class="claude-steps" role="list" aria-label="Set up {{ client_label }}">
+                                <li>
+                                    <h5><span class="claude-step-number" aria-hidden="true">1</span>Copy the LMS+ link</h5>
+                                    {{ mcp_url_field(client) }}
+                                </li>
+                                <li>
+                                    {% if client == 'chatgpt' %}
+                                    <h5><span class="claude-step-number" aria-hidden="true">2</span>Add LMS+ in ChatGPT</h5>
+                                    <a class="btn mcp-app-link" href="https://chatgpt.com/plugins"
+                                       target="_blank" rel="noopener" aria-label="Open ChatGPT Plugins in a new tab">
+                                        <span>Open ChatGPT Plugins</span>
+                                        <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                                    </a>
+                                    <p>Select <strong>+</strong>, then <strong>Add custom MCP server</strong>. Name it <strong>LMS+</strong>, paste the link, and choose <strong>OAuth</strong>. Review the warning and select <strong>Create as a plugin</strong>.</p>
+                                    {% else %}
+                                    <h5><span class="claude-step-number" aria-hidden="true">2</span>Add LMS+ in Claude</h5>
+                                    <a class="btn mcp-app-link" href="https://claude.ai/customize/connectors/yours"
+                                       target="_blank" rel="noopener" aria-label="Open Claude Connectors in a new tab">
+                                        <span>Open Claude Connectors</span>
+                                        <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                                    </a>
+                                    <p>Choose <strong>Add custom connector</strong>, name it <strong>LMS+</strong>, and paste the link. If prompted, select <strong>Sign in now</strong> and <strong>Register automatically</strong>.</p>
+                                    {% endif %}
+                                </li>
+                                <li>
+                                    <h5><span class="claude-step-number" aria-hidden="true">3</span>Approve in LMS+</h5>
+                                    {% if client == 'chatgpt' %}
+                                    <p>Select <strong>Connect</strong> if prompted. Sign in to LMS+ and select <strong>Authorize</strong>.</p>
+                                    <p>In a ChatGPT chat, type <strong>@LMS+</strong> and select the plugin.</p>
+                                    {% else %}
+                                    <p>Select <strong>Authorize</strong>. In a Claude chat, open <strong>+ → Connectors</strong> and turn on <strong>LMS+</strong>.</p>
+                                    {% endif %}
+                                    <p>Refresh LMS+ Settings to check for <strong>Connected</strong>.</p>
+                                </li>
+                            </ol>
+                        </section>
+                        {% endfor %}
+                        <section class="mcp-guide-panel" id="mcp-panel-other" aria-labelledby="mcp-title-other" tabindex="-1">
+                            <h4 class="mcp-guide-heading" id="mcp-title-other">Other apps</h4>
+                            <ol class="claude-steps" role="list" aria-label="Set up another app">
+                                <li>
+                                    <h5><span class="claude-step-number" aria-hidden="true">1</span>Add a remote MCP server</h5>
+                                    <p>In your app, add a remote MCP server. Choose <strong>HTTP</strong> if asked.</p>
+                                </li>
+                                <li>
+                                    <h5><span class="claude-step-number" aria-hidden="true">2</span>Paste the LMS+ link</h5>
+                                    {{ mcp_url_field('other') }}
+                                </li>
+                                <li>
+                                    <h5><span class="claude-step-number" aria-hidden="true">3</span>Authorize in LMS+</h5>
+                                    <p>Sign in to LMS+ and approve read-only assignment access.</p>
+                                </li>
+                            </ol>
+                            <p>No additional apps have passed live testing yet. Assignment lists and attachments are checked separately.</p>
+                        </section>
+                        <details class="mcp-help">
+                            <summary class="claude-panel-toggle">
+                                <span>Troubleshooting</span>
+                                <i class="fas fa-chevron-down claude-setup-chevron" aria-hidden="true"></i>
+                            </summary>
+                            <div class="mcp-help-topics">
+                                <details>
+                                    <summary>Connection expired or still says Not Connected <i class="fas fa-chevron-down claude-setup-chevron" aria-hidden="true"></i></summary>
+                                    <p>Find <strong>LMS+</strong> in <a class="claude-inline-link" href="https://claude.ai/customize/connectors/yours" target="_blank" rel="noopener">Claude Connectors</a> or <a class="claude-inline-link" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">ChatGPT Plugins</a>. Choose <strong>Connect</strong> or <strong>Reconnect</strong>, authorize in LMS+, then refresh Settings.</p>
+                                </details>
+                                <details>
+                                    <summary>Can’t add the connector <i class="fas fa-chevron-down claude-setup-chevron" aria-hidden="true"></i></summary>
+                                    <p><strong>Claude.</strong> If your Free plan’s custom connector slot is full, remove a connector you no longer use before adding LMS+.</p>
+                                    <p><strong>ChatGPT.</strong> Open ChatGPT on the web with a supported paid plan. For school or work accounts, ask your workspace admin to enable custom plugins.</p>
+                                </details>
+                                <details>
+                                    <summary>Connected, but the chat can’t find assignments <i class="fas fa-chevron-down claude-setup-chevron" aria-hidden="true"></i></summary>
+                                    <p><strong>Claude.</strong> In the chat, open <strong>+</strong>, choose <strong>Connectors</strong>, and turn on <strong>LMS+</strong>. If prompted, select <strong>Allow once</strong>.</p>
+                                    <p><strong>ChatGPT.</strong> Type <strong>@LMS+</strong> and select the plugin before asking about your assignments.</p>
+                                </details>
+                            </div>
+                        </details>
+                    </div>
+                    </div>
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+        --duration-fast: 150ms;
+        --duration-normal: 200ms;
+        --discord-blurple: #5865F2;
+        --discord-blurple-hover: #4752C4;
+        --discord-blurple-active: #3c45a5;
+    }
+
+    .settings-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    @media (min-width: 901px) {
+        .main-content:has(.settings-page) .content {
+            padding: calc(var(--header-height) + 0.75rem) 1.5rem 0.75rem;
+        }
+    }
+
+    .main-content:has(.settings-page) .app-footer {
+        position: static;
+        padding: 0.75rem 1.5rem 1rem;
+        background: transparent;
+        border-top: none;
+    }
+
+    /* 2-Column Desktop Grid for Settings */
+    .settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    /* Card Base */
+    .settings-card {
+        background: rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+        transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out);
+        display: flex;
+        flex-direction: column;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .settings-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        }
+    }
+
+    .settings-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.875rem;
+        padding: 0.85rem 1.25rem;
+        background: rgba(0, 0, 0, 0.1);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-card-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        font-size: 1.15rem;
+        background: rgba(59, 130, 246, 0.12);
+        color: var(--primary-color);
+        flex-shrink: 0;
+    }
+
+    .settings-card-title h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0;
+        line-height: 1.25;
+    }
+
+    .settings-card-body {
+        padding: 1.125rem 1.25rem;
+        flex: 1;
+    }
+
+    /* Unlinked Discord Card Accent */
+    .card-discord.is-unlinked {
+        border-color: rgba(59, 130, 246, 0.25);
+    }
+
+    /* Discord Status Container */
+    .discord-status-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        gap: 0.875rem;
+        min-height: 64px;
+        box-sizing: border-box;
+    }
+
+    .discord-status-text {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+    }
+
+    .status-dot-active {
+        width: 10px;
+        height: 10px;
+        background: #22c55e;
+        border-radius: 50%;
+        animation: pulse-green 2.5s infinite;
+        flex-shrink: 0;
+    }
+
+    .status-dot-inactive {
+        width: 10px;
+        height: 10px;
+        background: #64748b;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .status-badge-text {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .status-badge-text.muted {
+        color: var(--text-secondary);
+    }
+
+    @keyframes pulse-green {
+        0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+        70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    .discord-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .discord-unconfigured {
+        padding: 1rem 1.25rem;
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+    }
+
+    .discord-unconfigured p {
+        margin: 0;
+    }
+
+    /* Redesigned Connect Discord Button (Pill with Circular Discord Disc) */
+    .btn-connect-discord {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 0.3125rem 1rem 0.3125rem 0.375rem;
+        min-height: 38px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(88, 101, 242, 0.35);
+        color: var(--text-primary);
+        text-decoration: none;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        line-height: 1;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        transition: background-color var(--duration-fast) var(--ease-out),
+                    border-color var(--duration-fast) var(--ease-out),
+                    transform var(--duration-fast) var(--ease-out),
+                    box-shadow var(--duration-fast) var(--ease-out);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .discord-icon-disc {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(88, 101, 242, 0.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #5865F2;
+        font-size: 0.95rem;
+        flex-shrink: 0;
+        transition: background-color var(--duration-fast) var(--ease-out),
+                    transform var(--duration-fast) var(--ease-out);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .btn-connect-discord:hover {
+            background: rgba(88, 101, 242, 0.1);
+            border-color: rgba(88, 101, 242, 0.55);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(88, 101, 242, 0.15);
+        }
+        .btn-connect-discord:hover .discord-icon-disc {
+            background: rgba(88, 101, 242, 0.28);
+            transform: scale(1.05);
+        }
+    }
+
+    .btn-connect-discord:active {
+        transform: translateY(0);
+        background: rgba(88, 101, 242, 0.18);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-connect-discord:focus-visible {
+        outline: 2px solid #5865F2;
+        outline-offset: 2px;
+    }
+
+    /* Test DM Secondary Button */
+    .btn-discord-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.875rem;
+        min-height: 36px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-primary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .btn-discord-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--text-secondary);
+            transform: translateY(-1px);
+        }
+    }
+
+    .btn-discord-secondary:active {
+        transform: translateY(0);
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .btn-discord-secondary:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    /* Unlink Button */
+    .btn-unlink {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.875rem;
+        min-height: 36px;
+        border-radius: 6px;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        background: rgba(239, 68, 68, 0.06);
+        color: var(--error-color, #ef4444);
+        cursor: pointer;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        line-height: 1.25;
+        transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .btn-unlink:hover {
+            background: rgba(239, 68, 68, 0.14);
+            color: var(--error-color, #ef4444);
+            border-color: rgba(239, 68, 68, 0.45);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+        }
+    }
+
+    .btn-unlink:active {
+        transform: translateY(0);
+        background: rgba(239, 68, 68, 0.22);
+    }
+
+    .btn-unlink:focus-visible {
+        outline: 2px solid var(--error-color, #ef4444);
+        outline-offset: 2px;
+    }
+
+    /* Theme Selector */
+    .theme-selector {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.875rem;
+    }
+
+    .theme-card {
+        cursor: pointer;
+        text-align: center;
+    }
+
+    .theme-card input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .theme-card-preview {
+        position: relative;
+        width: 100%;
+        height: 60px;
+        border-radius: 9px;
+        border: 2px solid var(--border-color);
+        overflow: hidden;
+        transition: border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        grid-template-rows: 15px 1fr;
+    }
+
+    .theme-card.active .theme-card-preview,
+    .theme-card input:checked + .theme-card-preview {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        transform: scale(1.02);
+    }
+
+    .theme-card input:focus-visible + .theme-card-preview {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    .preview-header { grid-column: 1 / -1; }
+    .preview-sidebar { grid-row: 2; }
+    .preview-content {
+        padding: 5px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .preview-line { height: 5px; border-radius: 2px; }
+    .preview-line.short { width: 60%; }
+
+    .theme-card-preview.light { background: #ffffff; }
+    .theme-card-preview.light .preview-header { background: #f1f5f9; }
+    .theme-card-preview.light .preview-sidebar { background: #f8fafc; }
+    .theme-card-preview.light .preview-line { background: #e2e8f0; }
+
+    .theme-card-preview.dark { background: #0f172a; }
+    .theme-card-preview.dark .preview-header { background: #1e293b; }
+    .theme-card-preview.dark .preview-sidebar { background: #1e293b; }
+    .theme-card-preview.dark .preview-line { background: #334155; }
+
+    .theme-card-preview.system {
+        background: linear-gradient(135deg, #ffffff 50%, #0f172a 50%);
+    }
+    .theme-card-preview.system .preview-header {
+        background: linear-gradient(135deg, #f1f5f9 50%, #1e293b 50%);
+    }
+    .theme-card-preview.system .preview-sidebar {
+        background: linear-gradient(135deg, #f8fafc 50%, #1e293b 50%);
+    }
+    .theme-card-preview.system .preview-line {
+        background: linear-gradient(135deg, #e2e8f0 50%, #334155 50%);
+    }
+
+    .theme-card-label {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    /* Row 2: Full-Width Unified Notification Card */
+    .card-notifications {
+        grid-column: 1 / -1;
+    }
+
+    .notifications-body {
+        position: relative;
+        min-height: 180px;
+    }
+
+    /* Locked Overlay for Unified Notification Card */
+    .notifications-locked-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(11, 15, 25, 0.72);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        border-radius: 0 0 12px 12px;
+        padding: 2rem 1.5rem;
+        text-align: center;
+    }
+
+    .locked-icon-wrapper {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        color: var(--primary-color, #3b82f6);
+        margin-bottom: 0.625rem;
+    }
+
+    .locked-heading {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
+    }
+
+    #notificationForm.is-locked {
+        filter: blur(4px);
+        opacity: 0.45;
+        pointer-events: none;
+        user-select: none;
+    }
+
+    /* Notification Internal Sections Grid */
+    .notification-sections-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 1.5rem;
+        align-items: start;
+    }
+
+    .notification-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .section-label {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-left: 0.125rem;
+    }
+
+    .section-label i {
+        color: var(--primary-color);
+        font-size: 0.875rem;
+    }
+
+    /* Subgrid Layouts */
+    .assignment-subgrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+
+    .attendance-subgrid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    /* Notification Toggle Cards */
+    .notification-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.85rem 1rem;
+        gap: 0.875rem;
+        background: rgba(0, 0, 0, 0.15);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        cursor: pointer;
+        min-height: 56px;
+        box-sizing: border-box;
+        transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .notification-toggle:hover {
+            background: rgba(0, 0, 0, 0.25);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+        }
+    }
+
+    .toggle-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .toggle-title {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.25;
+    }
+
+    .toggle-desc {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
+        line-height: 1.35;
+        white-space: normal;
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+        position: relative;
+        width: 46px;
+        height: 26px;
+        flex-shrink: 0;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-tertiary);
+        border-radius: 26px;
+        transition: background-color var(--duration-fast) var(--ease-out);
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: transform var(--duration-fast) var(--ease-out);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+        background: var(--primary-color);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+        transform: translateX(20px);
+    }
+
+    .toggle-switch input:focus-visible + .toggle-slider {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    .claude-settings { grid-column: 1 / -1; min-width: 0; scroll-margin-top: 4.5rem; container-type: inline-size; }
+    .claude-body :is(h4, h5) { margin: 0; font-size: 0.95rem; }
+    .claude-body p {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+    }
+    .claude-body p { margin: 0.3rem 0 0; }
+    .mcp-mark {
+        inline-size: 22px;
+        block-size: 22px;
+        background: currentColor;
+        mask: url("{{ url_for('static', filename='images/mcp.svg') }}") center / contain no-repeat;
+    }
+    .mcp-description { margin: 0.25rem 0 0; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.45; }
+    .mcp-examples { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.3rem 0.75rem; padding-block-start: 0.4rem; font-size: 0.8125rem; }
+    .mcp-examples strong { color: var(--text-secondary); }
+    .mcp-connections { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--border-color); border-radius: 10px; }
+    .mcp-connections > li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.6rem 1rem;
+        padding: 0.65rem 0.85rem;
+    }
+    .mcp-connections > li + li { border-block-start: 1px solid var(--border-color); }
+    .mcp-connection-label, .mcp-connection-actions, .mcp-connection-status { display: flex; align-items: center; gap: 0.55rem; }
+    .mcp-connection-actions { flex-wrap: wrap; gap: 0.25rem; }
+    .mcp-provider-mark {
+        display: grid;
+        place-items: center;
+        inline-size: 2.25rem;
+        block-size: 2.25rem;
+        flex: none;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+    }
+    .mcp-connection-state { display: grid; gap: 0.1rem; }
+    .mcp-connection-status { font-size: 0.8125rem; color: var(--text-secondary); }
+    .mcp-connection-status > span { inline-size: 8px; block-size: 8px; }
+    .mcp-connection-label .mcp-openai-icon { inline-size: 20px; block-size: 20px; }
+    @container (min-width: 56rem) {
+        .mcp-connections { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+        .mcp-connections > li + li { border-block-start: 0; border-inline-start: 1px solid var(--border-color); }
+    }
+    .mcp-setup-guide {
+        --mcp-guide-border: color-mix(in srgb, var(--text-primary) 16%, var(--border-color));
+        max-inline-size: 44rem;
+        margin-block-start: 0.8rem;
+        padding-block-start: 0.9rem;
+        padding-block-end: 4px;
+        border-block-start: 1px solid var(--border-color);
+    }
+    .mcp-guide-panel { min-inline-size: 0; }
+    .mcp-guide-panel[hidden] { display: none; }
+    .mcp-guide-panel + .mcp-guide-panel:not([hidden]) { margin-block-start: 1rem; }
+    .mcp-guide-panel[hidden] + .mcp-guide-panel:not([hidden]) { margin-block-start: 0; }
+    .claude-body .mcp-guide-heading { font-size: 1rem; }
+    .mcp-setup[data-enhanced] .mcp-guide-heading { display: none; }
+    .mcp-setup[data-enhanced] .mcp-setup-reveal {
+        display: grid;
+        grid-template-rows: 1fr;
+        margin-inline: -4px;
+        opacity: 1;
+    }
+    .mcp-setup[data-enhanced] .mcp-setup-reveal[inert] {
+        grid-template-rows: 0fr;
+        opacity: 0;
+    }
+    .mcp-setup[data-enhanced] .mcp-setup-clip {
+        min-block-size: 0;
+        overflow: hidden;
+        padding-inline: 4px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .mcp-setup[data-motion] .mcp-setup-reveal {
+            transition: grid-template-rows var(--duration-normal) var(--ease-out),
+                        opacity var(--duration-fast) var(--ease-out);
+        }
+    }
+    .mcp-help { margin-block-start: 0.7rem; border-block-start: 1px solid var(--border-color); }
+    .mcp-openai-icon {
+        inline-size: 16px;
+        block-size: 16px;
+        background: currentColor;
+        mask: url("{{ url_for('static', filename='images/openai.svg') }}") center / contain no-repeat;
+    }
+    .mcp-plan-note {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: baseline;
+        gap: 0.65rem;
+        margin-block: 0.4rem 0.65rem;
+        padding: 0.7rem 0.85rem;
+        background: color-mix(in srgb, var(--primary-color) 7%, var(--bg-secondary));
+        border: 1px solid color-mix(in srgb, var(--primary-color) 24%, var(--border-color));
+        border-radius: var(--border-radius);
+    }
+    .mcp-plan-note > i { color: var(--primary-color); font-size: 0.875rem; }
+    .claude-body .mcp-plan-note > p {
+        margin: 0;
+        color: color-mix(in srgb, var(--text-secondary) 75%, var(--text-primary));
+        line-height: 1.5;
+    }
+    .mcp-plan-note strong { color: var(--text-primary); }
+    .claude-body { display: grid; gap: 0.45rem 1rem; }
+    .claude-body summary::-webkit-details-marker { display: none; }
+    .claude-settings .status-dot-active { animation: none; }
+    .claude-setup-chevron { font-size: 0.75em; }
+    .claude-body details[open] > summary .claude-setup-chevron { transform: rotate(180deg); }
+    @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+        .claude-body summary:not(:focus-visible) .claude-setup-chevron {
+            transition: transform var(--duration-fast) var(--ease-out);
+        }
+    }
+    .claude-steps { list-style: none; margin: 0.35rem 0 0; padding: 0; }
+    .claude-steps > li {
+        position: relative;
+        padding: 0.55rem 0 0.55rem 1.75rem;
+    }
+    .claude-steps h5 { line-height: 1.5; }
+    .claude-step-number {
+        position: absolute;
+        inset-inline-start: 0;
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+    }
+    .claude-steps p { line-height: 1.55; }
+    .mcp-url-field {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        margin-block-start: 0.5rem;
+        padding-inline-start: 0.75rem;
+        border: 1px solid var(--mcp-guide-border);
+        border-radius: 9px;
+        background: var(--bg-secondary);
+    }
+    .mcp-url-icon { color: var(--text-secondary); font-size: 0.8125rem; }
+    .mcp-url-field .claude-field {
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+        min-height: 44px;
+        padding: 0.5rem;
+        font: 0.8125rem ui-monospace, monospace;
+        color: var(--text-primary);
+        background: transparent;
+        border: 0;
+        text-overflow: ellipsis;
+    }
+    .mcp-url-field .claude-field:focus { text-overflow: clip; }
+    .mcp-url-field .mcp-copy-button {
+        gap: 0.45rem;
+        padding-inline: 0.75rem;
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
+        border: 0;
+        border-inline-start: 1px solid var(--mcp-guide-border);
+        border-radius: 0 8px 8px 0;
+        box-shadow: none;
+    }
+    @media (hover: hover) and (pointer: fine) {
+        .mcp-url-field .mcp-copy-button:hover { color: var(--primary-color); }
+    }
+    .claude-body .btn { min-height: 44px; }
+    .claude-body :is(.claude-disconnect, .mcp-setup-button) {
+        border-radius: var(--border-radius);
+        transition: none;
+    }
+    .claude-body .claude-disconnect {
+        padding-inline: 0.65rem;
+        background: transparent;
+        color: var(--text-secondary);
+        font-weight: 600;
+        text-underline-offset: 0.2em;
+    }
+    .claude-body .mcp-setup-button {
+        inline-size: 44px;
+        flex: none;
+        padding: 0;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        border: 1px solid color-mix(in srgb, var(--text-secondary) 16%, var(--border-color));
+        box-shadow: none;
+    }
+    .claude-body .mcp-setup-button[aria-expanded="true"] {
+        background: var(--nav-active);
+        color: var(--primary-color);
+        border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+    }
+    .mcp-setup-button[aria-expanded="true"] .mcp-setup-chevron { transform: rotate(180deg); }
+    .claude-body .mcp-app-link {
+        gap: 0.6rem;
+        max-inline-size: 100%;
+        margin-block-start: 0.65rem;
+        padding-inline: 0.75rem;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        border: 1px solid var(--mcp-guide-border);
+        box-shadow: none;
+        font-weight: 600;
+        text-align: start;
+    }
+    .mcp-app-link > i { flex: none; color: var(--text-secondary); font-size: 0.75rem; }
+    .claude-body .claude-disconnect:is(:focus-visible, :active) {
+        color: color-mix(in srgb, var(--error-color) 55%, var(--text-primary));
+        text-decoration: underline;
+    }
+    @media (hover: hover) and (pointer: fine) {
+        .claude-body .claude-disconnect:hover {
+            color: color-mix(in srgb, var(--error-color) 55%, var(--text-primary));
+            text-decoration: underline;
+        }
+        .claude-body .mcp-setup-button:hover {
+            background: var(--nav-active);
+            color: var(--primary-color);
+        }
+        .claude-body :is(.mcp-setup-button, .mcp-app-link):hover { border-color: var(--primary-color); }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .claude-body .mcp-setup-button:not(:focus-visible) {
+            transition: background-color var(--duration-fast) ease,
+                        border-color var(--duration-fast) ease,
+                        transform var(--duration-fast) var(--ease-out);
+        }
+        .claude-body .mcp-app-link:not(:focus-visible),
+        .claude-body .mcp-setup-button:not(:focus-visible) .mcp-setup-chevron {
+            transition: transform var(--duration-fast) var(--ease-out);
+        }
+        .claude-body :is(.mcp-setup-button, .mcp-app-link):active:not(:focus-visible) { transform: scale(0.97); }
+    }
+    .claude-body .btn[hidden] { display: none; }
+    .claude-body :is(button, input, textarea, summary, a):focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+    .claude-body .claude-copy-status:empty { margin: 0; }
+    .claude-copy-status.is-success {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    .claude-copy-icon { display: inline-grid; place-items: center; inline-size: 1em; }
+    .claude-copy-icon i { grid-area: 1 / 1; }
+    .claude-copy-icon .fa-check,
+    [data-claude-copy][data-copy-success] .fa-copy { opacity: 0; }
+    [data-claude-copy][data-copy-success] .fa-check { opacity: 1; }
+    @media (prefers-reduced-motion: no-preference) {
+        [data-claude-copy]:not(:focus-visible) .claude-copy-icon i {
+            transition: opacity var(--duration-fast) var(--ease-out);
+        }
+    }
+    .claude-body summary { cursor: pointer; font-size: 0.875rem; }
+    .claude-panel-toggle {
+        display: flex;
+        inline-size: fit-content;
+        max-inline-size: 100%;
+        align-items: center;
+        gap: 0.65rem;
+        min-block-size: 44px;
+        padding: 0.35rem 0.6rem;
+        border-radius: 7px;
+        list-style: none;
+        font-weight: 600;
+    }
+    .claude-panel-toggle[hidden] { display: none; }
+    .claude-panel-toggle .claude-setup-chevron { color: var(--text-secondary); }
+    .claude-body details[open] > .claude-panel-toggle { background: var(--bg-secondary); }
+    @media (hover: hover) and (pointer: fine) {
+        .claude-panel-toggle:hover { background: var(--bg-secondary); }
+    }
+    .mcp-help-topics { border: 1px solid var(--border-color); border-radius: 10px; }
+    .mcp-help-topics > details + details { border-block-start: 1px solid var(--border-color); }
+    .mcp-help-topics summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        min-block-size: 44px;
+        padding: 0.65rem 0.85rem;
+        list-style: none;
+        font-weight: 600;
+        border-radius: 8px;
+    }
+    .mcp-help-topics summary i { color: var(--text-secondary); flex: none; }
+    .mcp-help-topics details[open] summary { background: var(--bg-secondary); }
+    .mcp-help-topics details > p { padding-inline: 0.85rem; margin: 0.55rem 0; line-height: 1.55; }
+    .mcp-help-topics details > p:last-child { margin-block-end: 0.85rem; }
+    @media (hover: hover) and (pointer: fine) {
+        .mcp-help-topics summary:hover { background: var(--bg-secondary); }
+    }
+    .claude-inline-link { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 0.16em; }
+
+    @media (max-width: 640px) {
+        .claude-steps > li { padding-inline-start: 0; }
+        .claude-steps h5 { padding-inline-start: 1.75rem; }
+    }
+
+    /* Responsive Design for Tablets & Mobile */
+    @media (max-width: 900px) {
+        .settings-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .card-notifications {
+            grid-column: 1;
+        }
+
+        .notification-sections-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .assignment-subgrid {
+            grid-template-columns: 1fr;
+        }
+
+        .settings-card-body {
+            padding: 0.875rem 1rem;
+        }
+
+        .theme-selector {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .theme-card-label {
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+
+        .discord-status-container {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: center;
+        }
+        
+        .discord-status-text {
+            justify-content: center;
+        }
+
+        .discord-actions {
+            justify-content: center;
+            width: 100%;
+        }
+        
+        .discord-actions form {
+            flex: 1;
+            display: flex;
+            width: 100%;
+        }
+
+        .discord-actions .btn-discord-secondary,
+        .discord-actions .btn-unlink,
+        .btn-connect-discord {
+            flex: 1;
+            width: 100%;
+            text-align: center;
+            justify-content: center;
+            min-height: 44px;
+        }
+
+        .notification-toggle {
+            min-height: 52px;
+            padding: 0.75rem 0.875rem;
+        }
+    }
+
+    /* Accessibility: Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+        *, ::before, ::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+        .status-dot-active {
+            animation: none !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const guide = document.querySelector('[data-mcp-guide]');
+        if (guide) {
+            const panels = guide.querySelectorAll('.mcp-guide-panel');
+            const setup = guide.closest('details');
+            const reveal = setup.querySelector('[data-mcp-reveal]');
+            const setupButtons = document.querySelectorAll('[data-mcp-open]');
+            let setupTrigger;
+            if (setupButtons.length) {
+                reveal.inert = true;
+                setup.dataset.enhanced = '';
+                setup.querySelector('summary').hidden = true;
+                setup.open = true;
+            }
+            function setExpanded(button, expanded) {
+                button.setAttribute('aria-expanded', expanded);
+            }
+            function closeSetup(withMotion) {
+                setup.toggleAttribute('data-motion', withMotion);
+                setExpanded(setupTrigger, false);
+                setupTrigger.focus();
+                reveal.inert = true;
+                setupTrigger = null;
+            }
+            guide.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && setupTrigger) closeSetup(false);
+            });
+            setupButtons.forEach(button => {
+                const panel = document.getElementById('mcp-panel-' + button.dataset.mcpOpen);
+                button.hidden = false;
+                button.addEventListener('click', event => {
+                    const withMotion = event.detail > 0;
+                    if (setupTrigger === button) {
+                        closeSetup(withMotion);
+                        return;
+                    }
+                    setup.toggleAttribute('data-motion', withMotion);
+                    if (setupTrigger) setExpanded(setupTrigger, false);
+                    setupTrigger = button;
+                    setExpanded(button, true);
+                    panels.forEach(item => { item.hidden = item !== panel; });
+                    reveal.inert = false;
+                    panel.focus({ preventScroll: withMotion });
+                });
+            });
+        }
+
+        document.querySelectorAll('[data-claude-copy]').forEach(button => {
+            const field = document.getElementById(button.dataset.claudeCopy);
+            const status = document.getElementById(button.getAttribute('aria-describedby'));
+            let resetTimer;
+            let attempt = 0;
+            button.hidden = false;
+            button.addEventListener('click', async () => {
+                const currentAttempt = ++attempt;
+                try {
+                    await navigator.clipboard.writeText(field.value);
+                    if (currentAttempt !== attempt) return;
+                    clearTimeout(resetTimer);
+                    status.classList.add('is-success');
+                    status.textContent = 'Copied to clipboard.';
+                    button.setAttribute('data-copy-success', '');
+                    resetTimer = setTimeout(() => {
+                        button.removeAttribute('data-copy-success');
+                        status.textContent = '';
+                    }, 1600);
+                } catch {
+                    if (currentAttempt !== attempt) return;
+                    clearTimeout(resetTimer);
+                    button.removeAttribute('data-copy-success');
+                    status.classList.remove('is-success');
+                    field.focus();
+                    field.select();
+                    status.textContent = 'Copy the selected text manually.';
+                }
+            });
+        });
+
+        // Auto-save theme changes
+        const themeInputs = document.querySelectorAll('input[name="theme"]');
+        themeInputs.forEach(input => {
+            input.addEventListener('change', function () {
+                if (this.checked) {
+                    if (window.portal) {
+                        window.portal.setTheme(this.value);
+                    }
+
+                    document.querySelectorAll('.theme-card').forEach(card => {
+                        card.classList.remove('active');
+                    });
+                    this.closest('.theme-card').classList.add('active');
+
+                    document.getElementById('themeForm').submit();
+                }
+            });
+        });
+
+        // Auto-save notification changes — collects ALL toggles from notificationForm
+        function saveAllNotificationPrefs() {
+            const formData = new FormData();
+            document.querySelectorAll('.toggle-switch input').forEach(input => {
+                if (input.checked) formData.append(input.name, 'on');
+            });
+            const form = document.getElementById('notificationForm');
+            const action = form ? form.action : '{{ url_for("settings.update_notifications") }}';
+            const csrfInput = form ? form.querySelector('input[name="csrf_token"]') : document.querySelector('input[name="csrf_token"]');
+
+            fetch(action, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfInput ? csrfInput.value : ''
+                },
+                body: formData
+            }).then(response => response.json()).then(data => {
+                if (data.success && window.portal) {
+                    window.portal.showNotification('Settings saved', 'success');
+                } else if (!data.success && window.portal) {
+                    window.portal.showNotification(data.error || 'Failed to save settings', 'error');
+                }
+            }).catch(err => {
+                console.error('Failed to save settings:', err);
+                if (window.portal) window.portal.showNotification('Failed to save settings', 'error');
+            });
+        }
+
+        document.querySelectorAll('.toggle-switch input').forEach(input => {
+            input.addEventListener('change', saveAllNotificationPrefs);
+        });
+
+        {% if not is_production %}
+        // Discord Test DM
+        const discordTestBtn = document.getElementById('testDiscordBtn');
+        if (discordTestBtn) {
+            discordTestBtn.addEventListener('click', function() {
+                const originalText = discordTestBtn.innerText;
+                discordTestBtn.disabled = true;
+                discordTestBtn.innerText = 'Sending...';
+                discordTestBtn.style.opacity = '0.7';
+                discordTestBtn.style.cursor = 'not-allowed';
+                
+                setTimeout(() => {
+                    discordTestBtn.disabled = false;
+                    discordTestBtn.innerText = originalText;
+                    discordTestBtn.style.opacity = '1';
+                    discordTestBtn.style.cursor = 'pointer';
+                }, 5000);
+
+                fetch('/discord/test-dm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && window.portal) {
+                        window.portal.showNotification('Test message sent to Discord!', 'success');
+                    } else {
+                        throw new Error(data.error || 'Failed to send');
+                    }
+                })
+                .catch((e) => {
+                    if (window.portal) window.portal.showNotification('Failed: ' + e.message, 'error');
+                });
+            });
+        }
+        {% endif %}
+    });
+</script>
+{% endblock %}

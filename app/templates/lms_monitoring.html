@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}LMS Cache Monitoring{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <section class="content-header">
+        <h1>
+            LMS Cache Monitoring
+            <small>Performance and Statistics Dashboard</small>
+        </h1>
+    </section>
+
+    <section class="content">
+        <!-- Auto-refresh controls -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="box box-default">
+                    <div class="box-body">
+                        <button id="refresh-stats-btn" class="btn btn-primary">
+                            <i class="fa fa-refresh"></i> Refresh Stats
+                        </button>
+                        <label class="checkbox-inline" style="margin-left: 20px;">
+                            <input type="checkbox" id="auto-refresh-toggle" checked> Auto-refresh (every 10s)
+                        </label>
+                        <span id="last-updated" class="text-muted" style="margin-left: 20px;">
+                            Last updated: <span id="last-updated-time">-</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cache Statistics -->
+        <div class="row">
+            <div class="col-md-3 col-sm-6 col-xs-12">
+                <div class="info-box">
+                    <span class="info-box-icon bg-aqua"><i class="fa fa-database"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Cache Hit Rate</span>
+                        <span class="info-box-number" id="cache-hit-rate">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6 col-xs-12">
+                <div class="info-box">
+                    <span class="info-box-icon bg-green"><i class="fa fa-check"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Cache Hits</span>
+                        <span class="info-box-number" id="cache-hits">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6 col-xs-12">
+                <div class="info-box">
+                    <span class="info-box-icon bg-yellow"><i class="fa fa-times"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Cache Misses</span>
+                        <span class="info-box-number" id="cache-misses">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6 col-xs-12">
+                <div class="info-box">
+                    <span class="info-box-icon bg-red"><i class="fa fa-clock-o"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Stale Hits</span>
+                        <span class="info-box-number" id="stale-hits">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="box box-primary">
+                    <div class="box-header with-border">
+                        <h3 class="box-title">Cache Performance</h3>
+                    </div>
+                    <div class="box-body">
+                        <table class="table table-bordered">
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                            </tr>
+                            <tr>
+                                <td>Memory Entries</td>
+                                <td id="memory-entries">-</td>
+                            </tr>
+                            <tr>
+                                <td>Memory Size</td>
+                                <td id="memory-size">-</td>
+                            </tr>
+                            <tr>
+                                <td>Disk Size</td>
+                                <td id="disk-size">-</td>
+                            </tr>
+                            <tr>
+                                <td>Avg GET Time</td>
+                                <td id="avg-get-time">-</td>
+                            </tr>
+                            <tr>
+                                <td>Avg SET Time</td>
+                                <td id="avg-set-time">-</td>
+                            </tr>
+                            <tr>
+                                <td>Max GET Time</td>
+                                <td id="max-get-time">-</td>
+                            </tr>
+                            <tr>
+                                <td>Max SET Time</td>
+                                <td id="max-set-time">-</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="box box-success">
+                    <div class="box-header with-border">
+                        <h3 class="box-title">Background Service</h3>
+                    </div>
+                    <div class="box-body">
+                        <table class="table table-bordered">
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                            </tr>
+                            <tr>
+                                <td>Status</td>
+                                <td id="bg-status">-</td>
+                            </tr>
+                            <tr>
+                                <td>Active Tasks</td>
+                                <td id="active-tasks">-</td>
+                            </tr>
+                            <tr>
+                                <td>Queued Tasks</td>
+                                <td id="queued-tasks">-</td>
+                            </tr>
+                            <tr>
+                                <td>Completed Tasks</td>
+                                <td id="completed-tasks">-</td>
+                            </tr>
+                            <tr>
+                                <td>Failed Tasks</td>
+                                <td id="failed-tasks">-</td>
+                            </tr>
+                            <tr>
+                                <td>Success Rate</td>
+                                <td id="success-rate">-</td>
+                            </tr>
+                            <tr>
+                                <td>Avg Task Duration</td>
+                                <td id="avg-task-duration">-</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Statistics -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="box box-info">
+                    <div class="box-header with-border">
+                        <h3 class="box-title">Detailed Statistics</h3>
+                    </div>
+                    <div class="box-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4>Cache Operations</h4>
+                                <table class="table table-striped">
+                                    <tr>
+                                        <td>Total GET Operations</td>
+                                        <td id="total-gets">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total SET Operations</td>
+                                        <td id="total-sets">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total DELETE Operations</td>
+                                        <td id="total-deletes">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total CLEAR Operations</td>
+                                        <td id="total-clears">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Evictions</td>
+                                        <td id="evictions">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Disk Read Errors</td>
+                                        <td id="disk-read-errors">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Disk Write Errors</td>
+                                        <td id="disk-write-errors">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Corrupted Entries</td>
+                                        <td id="corrupted-entries">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h4>Background Service Details</h4>
+                                <table class="table table-striped">
+                                    <tr>
+                                        <td>Total Tasks</td>
+                                        <td id="total-tasks">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Tasks Retried</td>
+                                        <td id="tasks-retried">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Scrape Time</td>
+                                        <td id="total-scrape-time">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Max Task Duration</td>
+                                        <td id="max-task-duration">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Min Task Duration</td>
+                                        <td id="min-task-duration">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Assignments Scraped</td>
+                                        <td id="total-assignments">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Courses Scraped</td>
+                                        <td id="total-courses">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Scrape Errors</td>
+                                        <td id="scrape-errors">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Service Information -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="box box-default">
+                    <div class="box-header with-border">
+                        <h3 class="box-title">Service Information</h3>
+                    </div>
+                    <div class="box-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Cache Service Uptime:</strong> <span id="cache-uptime">-</span></p>
+                                <p><strong>Cache Directory:</strong> <span id="cache-dir">-</span></p>
+                                <p><strong>Max Memory Entries:</strong> <span id="max-entries">-</span></p>
+                                <p><strong>Stale Threshold:</strong> <span id="stale-threshold">-</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Background Service Uptime:</strong> <span id="bg-uptime">-</span></p>
+                                <p><strong>Max Workers:</strong> <span id="max-workers">-</span></p>
+                                <p><strong>Disk Cache Enabled:</strong> <span id="disk-cache-enabled">-</span></p>
+                                <p><strong>Stale-While-Revalidate:</strong> <span id="stale-revalidate-enabled">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<style>
+    .info-box-number {
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .table th {
+        width: 60%;
+    }
+    
+    .table td {
+        font-weight: bold;
+    }
+</style>
+
+<script>
+let autoRefreshInterval = null;
+
+function loadStats() {
+    $.ajax({
+        url: '/lms/api/dashboard/cache-stats',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                updateCacheStats(response.cache_stats);
+                updateBackgroundStats(response.background_service);
+                
+                // Update last updated time
+                const now = new Date();
+                $('#last-updated-time').text(now.toLocaleTimeString());
+            } else {
+                console.error('Failed to load stats:', response.error);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error loading stats:', error);
+        }
+    });
+}
+
+function updateCacheStats(stats) {
+    // Summary boxes
+    $('#cache-hit-rate').text(stats.hit_rate_percent + '%');
+    $('#cache-hits').text(stats.hits.toLocaleString());
+    $('#cache-misses').text(stats.misses.toLocaleString());
+    $('#stale-hits').text(stats.stale_hits.toLocaleString());
+    
+    // Performance table
+    $('#memory-entries').text(stats.memory_entries.toLocaleString());
+    $('#memory-size').text(stats.memory_size_mb + ' MB');
+    $('#disk-size').text(stats.disk_size_mb + ' MB');
+    $('#avg-get-time').text(stats.avg_get_time_ms.toFixed(2) + ' ms');
+    $('#avg-set-time').text(stats.avg_set_time_ms.toFixed(2) + ' ms');
+    $('#max-get-time').text(stats.max_get_time_ms.toFixed(2) + ' ms');
+    $('#max-set-time').text(stats.max_set_time_ms.toFixed(2) + ' ms');
+    
+    // Detailed stats
+    $('#total-gets').text(stats.total_gets.toLocaleString());
+    $('#total-sets').text(stats.total_sets.toLocaleString());
+    $('#total-deletes').text(stats.total_deletes.toLocaleString());
+    $('#total-clears').text(stats.total_clears.toLocaleString());
+    $('#evictions').text(stats.evictions.toLocaleString());
+    $('#disk-read-errors').text(stats.disk_read_errors.toLocaleString());
+    $('#disk-write-errors').text(stats.disk_write_errors.toLocaleString());
+    $('#corrupted-entries').text(stats.corrupted_entries.toLocaleString());
+    
+    // Service info
+    $('#cache-uptime').text(stats.uptime_hours.toFixed(2) + ' hours');
+    $('#cache-dir').text(stats.cache_dir);
+    $('#max-entries').text(stats.max_memory_entries.toLocaleString());
+    $('#stale-threshold').text(stats.stale_threshold_minutes + ' minutes');
+    $('#disk-cache-enabled').text(stats.enable_disk_cache ? 'Yes' : 'No');
+    $('#stale-revalidate-enabled').text(stats.enable_stale_while_revalidate ? 'Yes' : 'No');
+}
+
+function updateBackgroundStats(stats) {
+    // Status
+    const statusHtml = stats.is_running 
+        ? '<span class="label label-success">Running</span>' 
+        : '<span class="label label-danger">Stopped</span>';
+    $('#bg-status').html(statusHtml);
+    
+    // Summary
+    $('#active-tasks').text(stats.active_tasks.toLocaleString());
+    $('#queued-tasks').text(stats.queued_tasks.toLocaleString());
+    $('#completed-tasks').text(stats.tasks_completed.toLocaleString());
+    $('#failed-tasks').text(stats.tasks_failed.toLocaleString());
+    $('#success-rate').text(stats.success_rate_percent + '%');
+    $('#avg-task-duration').text(stats.avg_task_duration_seconds.toFixed(2) + ' s');
+    
+    // Detailed stats
+    $('#total-tasks').text(stats.total_tasks.toLocaleString());
+    $('#tasks-retried').text(stats.tasks_retried.toLocaleString());
+    $('#total-scrape-time').text(stats.total_scrape_time.toFixed(2) + ' s');
+    $('#max-task-duration').text(stats.max_task_duration_seconds.toFixed(2) + ' s');
+    $('#min-task-duration').text(stats.min_task_duration_seconds.toFixed(2) + ' s');
+    $('#total-assignments').text(stats.total_assignments_scraped.toLocaleString());
+    $('#total-courses').text(stats.total_courses_scraped.toLocaleString());
+    $('#scrape-errors').text(stats.scrape_errors.toLocaleString());
+    
+    // Service info
+    $('#bg-uptime').text(stats.uptime_hours.toFixed(2) + ' hours');
+    $('#max-workers').text(stats.max_workers);
+}
+
+function startAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+    autoRefreshInterval = setInterval(loadStats, 10000); // Every 10 seconds
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
+$(document).ready(function() {
+    // Load stats on page load
+    loadStats();
+    
+    // Start auto-refresh
+    startAutoRefresh();
+    
+    // Manual refresh button
+    $('#refresh-stats-btn').click(function() {
+        loadStats();
+    });
+    
+    // Auto-refresh toggle
+    $('#auto-refresh-toggle').change(function() {
+        if ($(this).is(':checked')) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    });
+});
+</script>
+{% endblock %}

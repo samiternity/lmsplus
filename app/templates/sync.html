@@ -1,0 +1,1293 @@
+{% extends "base.html" %}
+
+{% block title %}Setting Up Your Portal | LMS+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Layout resets for standalone sync screen */
+.app-container {
+    display: block !important;
+    min-height: 100vh;
+}
+
+.app-container > .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    min-height: 100vh;
+}
+
+.content {
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+.sync-page-wrapper {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-primary, #090d16);
+    background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
+        radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px;
+    padding: 2rem 1.5rem;
+    box-sizing: border-box;
+}
+
+.sync-card {
+    width: 100%;
+    max-width: 450px;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    padding: 2.25rem 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Header */
+.sync-header {
+    text-align: center;
+    margin-bottom: 1.75rem;
+}
+
+.sync-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary, #f8fafc);
+    margin: 0 0 0.4rem 0;
+    letter-spacing: -0.025em;
+}
+
+.sync-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary, #94a3b8);
+    margin: 0 auto;
+    line-height: 1.5;
+    max-width: 360px;
+}
+
+/* Progress bar section */
+.sync-progress-bar-wrapper {
+    margin-bottom: 1.75rem;
+}
+
+.sync-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.55rem;
+    font-size: 0.825rem;
+}
+
+.sync-current-msg {
+    color: var(--text-secondary, #94a3b8);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sync-percentage {
+    color: #38bdf8;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.sync-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+}
+
+.sync-fill {
+    height: 100%;
+    width: 10%;
+    background: linear-gradient(90deg, #2563eb, #38bdf8);
+    border-radius: 9999px;
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+
+.sync-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    animation: barShimmer 2s infinite linear;
+}
+
+@keyframes barShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Vertical Timeline Stepper */
+.pipeline-stepper {
+    display: flex;
+    flex-direction: column;
+    margin: 1.5rem 0 1.25rem 0;
+}
+
+.step-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.85rem;
+    min-height: 42px;
+}
+
+.step-node-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 22px;
+    flex-shrink: 0;
+}
+
+.step-node {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    z-index: 2;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.step-node.ind-waiting {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.step-node.ind-active {
+    background: rgba(56, 189, 248, 0.1);
+    border: 1.5px solid #38bdf8;
+    color: #38bdf8;
+    font-size: 0.75rem;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+}
+
+.step-node.ind-complete {
+    background: #10b981;
+    border: 1.5px solid #10b981;
+    color: #ffffff;
+    font-size: 0.65rem;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+    animation: checkPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.step-node.ind-warning {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1.5px solid #f59e0b;
+    color: #f59e0b;
+    font-size: 0.65rem;
+}
+
+@keyframes checkPop {
+    0% { transform: scale(0.85); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.step-line {
+    width: 1.5px;
+    flex-grow: 1;
+    min-height: 20px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 3px 0;
+    transition: background-color 0.3s ease;
+}
+
+.step-row.complete .step-line {
+    background: rgba(16, 185, 129, 0.4);
+}
+
+.step-content {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1px;
+    padding-bottom: 1.15rem;
+}
+
+.step-row:last-child .step-content {
+    padding-bottom: 0.25rem;
+}
+
+.step-title {
+    font-size: 0.925rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.4);
+    transition: color 0.25s ease, font-weight 0.25s ease;
+}
+
+.step-row.active .step-title {
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+.step-row.complete .step-title {
+    color: #cbd5e1;
+    font-weight: 500;
+}
+
+.step-status {
+    font-size: 0.775rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.step-status.status-active {
+    color: #38bdf8;
+}
+
+.step-status.status-complete {
+    color: #10b981;
+}
+
+.step-status.status-warning {
+    color: #f59e0b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .step-node.ind-complete {
+        animation: none;
+    }
+    .sync-fill::after {
+        animation: none;
+    }
+}
+
+/* Connection alert banner */
+.connection-alert {
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+    font-size: 0.825rem;
+    margin-bottom: 1.25rem;
+}
+
+/* Emergency fallback button */
+.fallback-action-container {
+    display: none;
+    text-align: center;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.fallback-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.825rem;
+    color: var(--text-secondary, #94a3b8);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.45rem 0.95rem;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fallback-btn:hover {
+    color: var(--text-primary, #f8fafc);
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Success Card Overlay */
+.sync-success-footer {
+    display: none;
+    margin-top: 1.5rem;
+    text-align: center;
+    animation: fadeIn 0.4s ease-out;
+}
+
+.btn-launch-dashboard {
+    width: 100%;
+    padding: 0.85rem 1.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+    transition: all 0.2s ease;
+}
+
+.btn-launch-dashboard:hover {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+}
+
+/* Error View Polish */
+.sync-error-view {
+    display: none;
+    text-align: center;
+    padding: 1.25rem 0.5rem 0.5rem 0.5rem;
+    animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sync-error-icon-box {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+    margin: 0.5rem auto 1.5rem;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    box-shadow: 0 0 28px rgba(239, 68, 68, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sync-error-icon-box i {
+    font-size: 1.75rem;
+    color: #f87171;
+}
+
+.sync-error-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary, #f8fafc);
+    letter-spacing: -0.02em;
+    margin: 0 0 1.75rem 0;
+}
+
+.sync-error-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.btn-sync-retry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    max-width: 280px;
+    padding: 0.85rem 1.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-sync-retry:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+}
+
+.btn-sync-retry:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn-sync-retry:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-sync-skip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #94a3b8);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.btn-sync-skip:hover {
+    color: var(--text-primary, #f8fafc);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Impeccable Survey Consent Modal */
+.survey-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 7, 14, 0.78);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 1.5rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.survey-modal-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.survey-modal-card {
+    width: 100%;
+    max-width: 440px;
+    background: #0b1120;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    padding: 2rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: scale(0.96) translateY(8px);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.survey-modal-backdrop.is-open .survey-modal-card {
+    transform: scale(1) translateY(0);
+}
+
+.survey-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.survey-modal-icon {
+    font-size: 1.25rem;
+    color: #fbbf24;
+    flex-shrink: 0;
+}
+
+.survey-modal-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f8fafc;
+    margin: 0;
+    letter-spacing: -0.02em;
+}
+
+.survey-modal-desc {
+    font-size: 0.875rem;
+    color: #94a3b8;
+    line-height: 1.55;
+    margin: 0 0 1.5rem 0;
+}
+
+.survey-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.btn-survey-autofill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-survey-autofill:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-survey-autofill:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-survey-skip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    background: transparent;
+    border: none;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    padding: 0.5rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.btn-survey-skip:hover {
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Survey Progress View */
+.survey-progress-view {
+    display: none;
+}
+
+.survey-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.55rem;
+    font-size: 0.85rem;
+}
+
+.survey-progress-label {
+    color: #94a3b8;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.survey-progress-pct {
+    color: #38bdf8;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.survey-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 1.25rem;
+}
+
+.survey-fill {
+    height: 100%;
+    width: 15%;
+    background: linear-gradient(90deg, #2563eb, #38bdf8);
+    border-radius: 9999px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.survey-courses-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    max-height: 160px;
+    overflow-y: auto;
+    margin-bottom: 1.25rem;
+    padding-right: 0.25rem;
+}
+
+.survey-course-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.825rem;
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.survey-course-item i {
+    color: #10b981;
+    font-size: 0.85rem;
+}
+
+.survey-error-alert {
+    display: none;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    font-size: 0.85rem;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 1.25rem;
+    align-items: center;
+    gap: 0.6rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sync-page-wrapper">
+    <div class="sync-card">
+        <!-- Main Running View -->
+        <div id="syncRunningView">
+            <div class="sync-header">
+                <h1 class="sync-title" id="syncMainTitle">Setting up your portal</h1>
+                <p class="sync-subtitle">
+                    Synchronizing your academic records from Bahria CMS.
+                </p>
+            </div>
+
+            <!-- Connection Warning for flaky WiFi -->
+            <div class="connection-alert" id="connectionAlert">
+                <i class="fas fa-wifi"></i>
+                <span>Reconnecting to server... Data extraction is running in the background.</span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="sync-progress-bar-wrapper">
+                <div class="sync-progress-meta">
+                    <span class="sync-current-msg" id="syncStatusMessage">
+                        <i class="fas fa-spinner fa-spin text-info" id="statusSpinner"></i>
+                        <span id="statusMessageText">Connecting to university CMS...</span>
+                    </span>
+                    <span class="sync-percentage" id="syncPercentage">10%</span>
+                </div>
+                <div class="sync-track">
+                    <div class="sync-fill" id="syncProgressBar" style="width: 10%;"></div>
+                </div>
+            </div>
+
+            <!-- Redesigned Pipeline Stepper -->
+            {% set is_user_ipp = is_ipp or (user and user.cms_account and (user.cms_account.institute_id == '5' or (user.cms_account.cms_username and user.cms_account.cms_username.startswith('05-')))) or (username and username.startswith('05-')) %}
+            <div class="pipeline-stepper" role="list">
+                <!-- Step 1: Auth -->
+                <div class="step-row active" id="step-auth" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-active" id="ind-auth">
+                            <i class="fas fa-circle-notch fa-spin"></i>
+                        </div>
+                        <div class="step-line"></div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">Bahria CMS Gateway</span>
+                        <span class="step-status status-active" id="chip-auth">Syncing...</span>
+                    </div>
+                </div>
+
+                <!-- Step 2: Profile -->
+                <div class="step-row" id="step-profile" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-waiting" id="ind-profile">2</div>
+                        <div class="step-line"></div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">Student Profile</span>
+                        <span class="step-status" id="chip-profile"></span>
+                    </div>
+                </div>
+
+                <!-- Step 3: Timetable -->
+                <div class="step-row" id="step-timetable" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-waiting" id="ind-timetable">3</div>
+                        <div class="step-line"></div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">Class Timetable</span>
+                        <span class="step-status" id="chip-timetable"></span>
+                    </div>
+                </div>
+
+                <!-- Step 4: Attendance & CSP -->
+                <div class="step-row" id="step-attendance" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-waiting" id="ind-attendance">4</div>
+                        <div class="step-line"></div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">Attendance{% if not is_user_ipp %} & CSP{% endif %}</span>
+                        <span class="step-status" id="chip-attendance"></span>
+                    </div>
+                </div>
+
+                <!-- Step 5: GPA / Results -->
+                <div class="step-row" id="step-gpa" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-waiting" id="ind-gpa">5</div>
+                        <div class="step-line"></div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">GPA & Academic Records</span>
+                        <span class="step-status" id="chip-gpa"></span>
+                    </div>
+                </div>
+
+                <!-- Step 6: Assignments -->
+                <div class="step-row" id="step-assignments" role="listitem">
+                    <div class="step-node-col">
+                        <div class="step-node ind-waiting" id="ind-assignments">6</div>
+                    </div>
+                    <div class="step-content">
+                        <span class="step-title">LMS Assignments</span>
+                        <span class="step-status" id="chip-assignments"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Actions (Hidden initially) -->
+            <div class="sync-success-footer" id="syncSuccessFooter">
+                <a href="{{ url_for('main.dashboard') }}" class="btn-launch-dashboard" id="launchDashboardBtn">
+                    <span>Enter Dashboard</span>
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
+
+            <!-- 45s Emergency Fallback Hatch -->
+            <div class="fallback-action-container" id="fallbackActionContainer">
+                <p style="font-size: 0.8rem; color: #64748b; margin: 0 0 0.4rem 0;">Taking longer than expected?</p>
+                <a href="{{ url_for('main.dashboard') }}" class="fallback-btn">
+                    Continue to Dashboard anyway &rarr;
+                </a>
+            </div>
+        </div>
+
+        <!-- Hard Error View -->
+        <div class="sync-error-view" id="syncErrorView">
+            <div class="sync-error-icon-box" id="syncErrorIconBox">
+                <i class="fas fa-exclamation-triangle" id="syncErrorIcon"></i>
+            </div>
+
+            <h2 class="sync-error-title" id="syncErrorTitle">CMS Connection Failed</h2>
+            <p id="syncErrorSubtitle" style="color: #94a3b8; font-size: 0.85rem; line-height: 1.5; margin: 0 0 1.25rem 0; text-align: center; max-width: 380px;"></p>
+
+            <div class="sync-error-actions">
+                <a href="https://cms.bahria.edu.pk/Logins/Student/Login.aspx" target="_blank" rel="noopener noreferrer" class="btn-sync-retry" id="syncVerifyPortalBtn" style="display: none; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fde68a; text-decoration: none; align-items: center; justify-content: center; gap: 0.5rem;">
+                    <i class="fas fa-external-link-alt"></i>
+                    <span>Verify Bahria CMS Status</span>
+                </a>
+                <button type="button" class="btn-sync-retry" id="syncRetryBtn">
+                    <i class="fas fa-redo-alt" id="retryIcon"></i>
+                    <span id="retryText">Retry Synchronization</span>
+                </button>
+                <a href="{{ url_for('main.dashboard') }}" class="btn-sync-skip" id="syncSkipBtn">
+                    <span>Continue to Dashboard anyway</span>
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Impeccable Survey Consent Modal -->
+    <div class="survey-modal-backdrop" id="surveyModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="surveyModalTitle">
+        <div class="survey-modal-card">
+            <!-- Consent View -->
+            <div id="surveyConsentView">
+                <div class="survey-modal-header">
+                    <i class="fas fa-clipboard-check survey-modal-icon"></i>
+                    <h2 class="survey-modal-title" id="surveyModalTitle">Course feedback needed</h2>
+                </div>
+                <p class="survey-modal-desc">
+                    CMS requires course feedback before unlocking LMS access. We can submit neutral answers in a few seconds.
+                </p>
+                <div class="survey-actions">
+                    <button type="button" class="btn-survey-autofill" id="btnSurveyAutofill">
+                        <i class="fas fa-magic" id="btnSurveyAutofillIcon"></i>
+                        <span id="btnSurveyAutofillText">Auto-fill surveys</span>
+                    </button>
+                    <button type="button" class="btn-survey-skip" id="btnSurveySkip">
+                        <span>Skip for now</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress View -->
+            <div class="survey-progress-view" id="surveyProgressView">
+                <div class="survey-modal-header">
+                    <i class="fas fa-spinner fa-spin survey-modal-icon" id="surveyProgressIcon"></i>
+                    <h2 class="survey-modal-title" id="surveyProgressTitle">Submitting feedback...</h2>
+                </div>
+                <div class="survey-progress-meta">
+                    <span class="survey-progress-label" id="surveyProgressLabel">Answering surveys...</span>
+                    <span class="survey-progress-pct" id="surveyProgressPct">20%</span>
+                </div>
+                <div class="survey-track">
+                    <div class="survey-fill" id="surveyProgressBar"></div>
+                </div>
+                <div class="survey-error-alert" id="surveyErrorAlert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="surveyErrorText">Could not submit surveys right now.</span>
+                </div>
+                <div class="survey-courses-list" id="surveyCoursesList"></div>
+                <div class="survey-actions" id="surveyProgressActions" style="display: none;">
+                    <button type="button" class="btn-survey-autofill" id="btnSurveyRetry">
+                        <i class="fas fa-redo-alt"></i>
+                        <span>Try again</span>
+                    </button>
+                    <button type="button" class="btn-survey-skip" id="btnSurveyProgressSkip">
+                        <span>Skip for now</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const STEPS_ORDER = ['auth', 'profile', 'timetable', 'attendance', 'gpa', 'assignments'];
+    let pollInterval = null;
+    let consecutiveErrors = 0;
+    let isFinished = false;
+
+    const progressBar = document.getElementById('syncProgressBar');
+    const progressPct = document.getElementById('syncPercentage');
+    const statusMsg = document.getElementById('statusMessageText');
+    const statusSpinner = document.getElementById('statusSpinner');
+    const connectionAlert = document.getElementById('connectionAlert');
+    const fallbackContainer = document.getElementById('fallbackActionContainer');
+    const successFooter = document.getElementById('syncSuccessFooter');
+    const mainTitle = document.getElementById('syncMainTitle');
+    const runningView = document.getElementById('syncRunningView');
+    const errorView = document.getElementById('syncErrorView');
+
+    // Survey modal elements
+    const surveyModal = document.getElementById('surveyModalBackdrop');
+    const surveyConsentView = document.getElementById('surveyConsentView');
+    const surveyProgressView = document.getElementById('surveyProgressView');
+    const btnSurveyAutofill = document.getElementById('btnSurveyAutofill');
+    const btnSurveyAutofillIcon = document.getElementById('btnSurveyAutofillIcon');
+    const btnSurveyAutofillText = document.getElementById('btnSurveyAutofillText');
+    const btnSurveySkip = document.getElementById('btnSurveySkip');
+    const btnSurveyProgressSkip = document.getElementById('btnSurveyProgressSkip');
+    const btnSurveyRetry = document.getElementById('btnSurveyRetry');
+    const surveyProgressBar = document.getElementById('surveyProgressBar');
+    const surveyProgressPct = document.getElementById('surveyProgressPct');
+    const surveyProgressLabel = document.getElementById('surveyProgressLabel');
+    const surveyProgressTitle = document.getElementById('surveyProgressTitle');
+    const surveyProgressIcon = document.getElementById('surveyProgressIcon');
+    const surveyProgressIconBadge = document.getElementById('surveyProgressIconBadge');
+    const surveyCoursesList = document.getElementById('surveyCoursesList');
+    const surveyErrorAlert = document.getElementById('surveyErrorAlert');
+    const surveyErrorText = document.getElementById('surveyErrorText');
+    const surveyProgressActions = document.getElementById('surveyProgressActions');
+
+    let surveyPollInterval = null;
+    let surveyModalOpen = false;
+    let bypassTimer = null;
+
+    // 45s emergency bypass timer
+    bypassTimer = setTimeout(() => {
+        if (!isFinished && !surveyModalOpen && fallbackContainer) {
+            fallbackContainer.style.display = 'block';
+        }
+    }, 45000);
+
+    function openSurveyModal() {
+        if (surveyModalOpen || isFinished) return;
+        surveyModalOpen = true;
+        if (surveyModal) surveyModal.classList.add('is-open');
+        if (bypassTimer) clearTimeout(bypassTimer);
+    }
+
+    function closeSurveyModal() {
+        surveyModalOpen = false;
+        if (surveyModal) surveyModal.classList.remove('is-open');
+    }
+
+    function startSurveyAutofill() {
+        if (btnSurveyAutofill) {
+            btnSurveyAutofill.disabled = true;
+            if (btnSurveyAutofillIcon) btnSurveyAutofillIcon.className = 'fas fa-spinner fa-spin';
+            if (btnSurveyAutofillText) btnSurveyAutofillText.textContent = 'Starting...';
+        }
+
+        fetch('/api/sync/survey/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'autofill_start' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                if (surveyConsentView) surveyConsentView.style.display = 'none';
+                if (surveyProgressView) surveyProgressView.style.display = 'block';
+                if (surveyErrorAlert) surveyErrorAlert.style.display = 'none';
+                if (surveyProgressActions) surveyProgressActions.style.display = 'none';
+                trackSurveyProgress(data.task_id);
+            } else {
+                throw new Error(data.error || 'Could not start survey submission');
+            }
+        })
+        .catch(err => {
+            console.error('Autofill start error:', err);
+            showSurveyError(err.message || 'Could not start surveys. Please try again.');
+        });
+    }
+
+    function trackSurveyProgress(taskId) {
+        if (surveyPollInterval) clearInterval(surveyPollInterval);
+
+        surveyPollInterval = setInterval(() => {
+            fetch(`/lms/api/cms/survey-progress?task_id=${encodeURIComponent(taskId)}`)
+                .then(res => res.json())
+                .then(resData => {
+                    const task = resData.task;
+                    if (!task) return;
+
+                    const pct = Math.min(100, Math.max(15, task.progress || 15));
+                    if (surveyProgressBar) surveyProgressBar.style.width = `${pct}%`;
+                    if (surveyProgressPct) surveyProgressPct.textContent = `${pct}%`;
+                    if (surveyProgressLabel && task.message) surveyProgressLabel.textContent = task.message;
+
+                    if (task.courses && task.courses.length > 0 && surveyCoursesList) {
+                        surveyCoursesList.innerHTML = task.courses.map(c => 
+                            `<div class="survey-course-item"><i class="fas fa-check-circle"></i><span>${c.name || c}</span></div>`
+                        ).join('');
+                    }
+
+                    if (task.status === 'completed') {
+                        clearInterval(surveyPollInterval);
+                        if (surveyProgressBar) surveyProgressBar.style.width = '100%';
+                        if (surveyProgressPct) surveyProgressPct.textContent = '100%';
+                        if (surveyProgressTitle) surveyProgressTitle.textContent = 'Surveys completed!';
+                        if (surveyProgressLabel) surveyProgressLabel.textContent = 'LMS unlocked. Finishing sync...';
+                        if (surveyProgressIcon) {
+                            surveyProgressIcon.className = 'fas fa-check text-success survey-modal-icon';
+                            surveyProgressIcon.style.color = '#10b981';
+                        }
+
+                        fetch('/api/sync/survey/resolve', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'resume', task_id: taskId })
+                        }).finally(() => {
+                            setTimeout(() => {
+                                closeSurveyModal();
+                                pollStatus();
+                            }, 700);
+                        });
+                    } else if (task.status === 'failed') {
+                        clearInterval(surveyPollInterval);
+                        showSurveyError(task.error || task.message || 'Could not submit surveys. CMS may be busy.');
+                    }
+                })
+                .catch(err => {
+                    console.warn('Survey poll warning:', err);
+                });
+        }, 450);
+    }
+
+    function showSurveyError(msg) {
+        if (surveyConsentView) surveyConsentView.style.display = 'none';
+        if (surveyProgressView) surveyProgressView.style.display = 'block';
+        if (surveyErrorAlert) {
+            surveyErrorAlert.style.display = 'flex';
+            if (surveyErrorText) surveyErrorText.textContent = msg;
+        }
+        if (surveyProgressActions) surveyProgressActions.style.display = 'flex';
+        if (surveyProgressIcon) {
+            surveyProgressIcon.className = 'fas fa-exclamation-triangle survey-modal-icon';
+            surveyProgressIcon.style.color = '#f87171';
+        }
+        if (btnSurveyAutofill) {
+            btnSurveyAutofill.disabled = false;
+            if (btnSurveyAutofillIcon) btnSurveyAutofillIcon.className = 'fas fa-magic';
+            if (btnSurveyAutofillText) btnSurveyAutofillText.textContent = 'Auto-fill surveys';
+        }
+    }
+
+    function skipSurvey() {
+        closeSurveyModal();
+        fetch('/api/sync/survey/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'skip' })
+        })
+        .then(() => {
+            pollStatus();
+        })
+        .catch(err => {
+            console.error('Survey skip error:', err);
+            pollStatus();
+        });
+    }
+
+    const STEP_NUMBERS = {
+        'auth': '1',
+        'profile': '2',
+        'timetable': '3',
+        'attendance': '4',
+        'gpa': '5',
+        'assignments': '6'
+    };
+
+    function setStepState(stepName, state) {
+        const item = document.getElementById(`step-${stepName}`);
+        const ind = document.getElementById(`ind-${stepName}`);
+        const chip = document.getElementById(`chip-${stepName}`);
+        if (!item || !chip) return;
+
+        item.classList.remove('active', 'complete', 'warning');
+        chip.className = 'step-status';
+
+        if (state === 'active') {
+            item.classList.add('active');
+            if (ind) {
+                ind.className = 'step-node ind-active';
+                ind.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+            }
+            chip.classList.add('status-active');
+            chip.textContent = 'Syncing...';
+        } else if (state === 'complete') {
+            item.classList.add('complete');
+            if (ind) {
+                ind.className = 'step-node ind-complete';
+                ind.innerHTML = '<i class="fas fa-check"></i>';
+            }
+            chip.classList.add('status-complete');
+            chip.textContent = 'Done';
+        } else if (state === 'warning') {
+            item.classList.add('warning');
+            if (ind) {
+                ind.className = 'step-node ind-warning';
+                ind.innerHTML = '<i class="fas fa-minus"></i>';
+            }
+            chip.classList.add('status-warning');
+            chip.textContent = 'Skipped';
+        } else {
+            if (ind) {
+                ind.className = 'step-node ind-waiting';
+                ind.textContent = STEP_NUMBERS[stepName] || '';
+            }
+            chip.textContent = '';
+        }
+    }
+
+    function renderSyncStatus(data) {
+        if (!data) return;
+
+        // Check if CMS survey is pending
+        if (data.survey_required) {
+            openSurveyModal();
+            return;
+        } else if (surveyModalOpen && !data.survey_required) {
+            closeSurveyModal();
+        }
+
+        // Progress & Message
+        const pct = Math.max(10, Math.min(100, data.progress || 10));
+        progressBar.style.width = `${pct}%`;
+        progressPct.textContent = `${pct}%`;
+
+        if (data.status_message) {
+            statusMsg.textContent = data.status_message;
+        }
+
+        const completed = data.completed_steps || [];
+        const failed = data.failed_steps || [];
+        let current = data.current_step || 'auth';
+        if (current === 'community_service') {
+            current = 'attendance';
+        }
+
+        // Check for hard login failure
+        if (failed.includes('auth') && !data.is_syncing) {
+            clearInterval(pollInterval);
+            runningView.style.display = 'none';
+            errorView.style.display = 'block';
+
+            const errorTitle = document.getElementById('syncErrorTitle');
+            const errorSubtitle = document.getElementById('syncErrorSubtitle');
+            const verifyBtn = document.getElementById('syncVerifyPortalBtn');
+            const errorIcon = document.getElementById('syncErrorIcon');
+            const errorIconBox = document.getElementById('syncErrorIconBox');
+
+            if (data.is_cms_down || (data.status_message && data.status_message.includes('CMS Server Down'))) {
+                if (errorTitle) errorTitle.textContent = 'Bahria University CMS Is Down';
+                if (errorSubtitle) errorSubtitle.textContent = "Bahria University's server (cms.bahria.edu.pk) is currently returning an ASP.NET HTTP 500 Runtime Error. Your credentials are fine—this is not an LMS+ issue. Please wait for university IT to restore the portal.";
+                if (verifyBtn) verifyBtn.style.display = 'inline-flex';
+                if (errorIcon) errorIcon.className = 'fas fa-server';
+                if (errorIconBox) errorIconBox.style.color = '#f59e0b';
+            } else {
+                if (errorTitle) errorTitle.textContent = 'CMS Connection Failed';
+                if (errorSubtitle) errorSubtitle.textContent = data.sub_message || 'Could not authenticate with university server';
+                if (verifyBtn) verifyBtn.style.display = 'none';
+            }
+
+            const retryBtn = document.getElementById('syncRetryBtn');
+            const retryIcon = document.getElementById('retryIcon');
+            const retryText = document.getElementById('retryText');
+            if (retryBtn) retryBtn.disabled = false;
+            if (retryIcon) retryIcon.classList.remove('fa-spin');
+            if (retryText) retryText.textContent = 'Retry Synchronization';
+            return;
+        }
+
+        // Update step UI states
+        STEPS_ORDER.forEach(step => {
+            const isDone = completed.includes(step) || (step === 'attendance' && completed.includes('community_service'));
+            if (isDone) {
+                setStepState(step, 'complete');
+            } else if (failed.includes(step)) {
+                setStepState(step, 'warning');
+            } else if (step === current && data.is_syncing) {
+                setStepState(step, 'active');
+            } else {
+                setStepState(step, 'waiting');
+            }
+        });
+
+        // Completion or halt check
+        if (!data.is_syncing) {
+            clearInterval(pollInterval);
+            if (current === 'completed' || pct >= 100 || completed.length >= 2) {
+                finishSetup();
+            } else {
+                if (statusSpinner) statusSpinner.className = 'fas fa-exclamation-circle text-warning';
+                if (fallbackContainer) fallbackContainer.style.display = 'block';
+            }
+        }
+    }
+
+    function finishSetup() {
+        if (isFinished) return;
+        isFinished = true;
+        clearInterval(pollInterval);
+
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+        statusMsg.textContent = 'All systems ready!';
+        statusSpinner.className = 'fas fa-check-circle text-success';
+        mainTitle.textContent = 'Setup Complete!';
+
+        // Mark remaining items as complete
+        STEPS_ORDER.forEach(step => {
+            const item = document.getElementById(`step-${step}`);
+            if (item && !item.classList.contains('warning')) {
+                setStepState(step, 'complete');
+            }
+        });
+
+        successFooter.style.display = 'block';
+
+        // 1.5s success pause, then auto-redirect
+        setTimeout(() => {
+            window.location.href = "{{ url_for('main.dashboard') }}";
+        }, 1500);
+    }
+
+    function pollStatus() {
+        fetch('/api/sync/status')
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                consecutiveErrors = 0;
+                if (connectionAlert) connectionAlert.style.display = 'none';
+                renderSyncStatus(data);
+            })
+            .catch(err => {
+                consecutiveErrors++;
+                if (consecutiveErrors >= 3 && connectionAlert) {
+                    connectionAlert.style.display = 'flex';
+                }
+                console.warn('Sync poll retry:', err);
+            });
+    }
+
+    const retryBtn = document.getElementById('syncRetryBtn');
+    const retryIcon = document.getElementById('retryIcon');
+    const retryText = document.getElementById('retryText');
+
+    if (retryBtn) {
+        retryBtn.addEventListener('click', function() {
+            retryBtn.disabled = true;
+            if (retryIcon) retryIcon.classList.add('fa-spin');
+            if (retryText) retryText.textContent = 'Reconnecting...';
+
+            fetch("{{ url_for('main.refresh_all_cms_data') }}?format=json")
+                .then(res => res.json())
+                .then(data => {
+                    errorView.style.display = 'none';
+                    runningView.style.display = 'block';
+
+                    progressBar.style.width = '15%';
+                    progressPct.textContent = '15%';
+                    statusMsg.textContent = 'Connecting to university CMS...';
+                    statusSpinner.className = 'fas fa-spinner fa-spin text-info';
+                    mainTitle.textContent = 'Setting up your portal';
+
+                    STEPS_ORDER.forEach(step => {
+                        setStepState(step, step === 'auth' ? 'active' : 'waiting');
+                    });
+
+                    consecutiveErrors = 0;
+                    isFinished = false;
+
+                    if (pollInterval) clearInterval(pollInterval);
+                    pollInterval = setInterval(pollStatus, 1200);
+                    pollStatus();
+                })
+                .catch(err => {
+                    console.error('Sync retry error:', err);
+                    if (retryIcon) retryIcon.classList.remove('fa-spin');
+                    if (retryText) retryText.textContent = 'Retry Synchronization';
+                    retryBtn.disabled = false;
+                });
+        });
+    }
+
+    if (btnSurveyAutofill) btnSurveyAutofill.addEventListener('click', startSurveyAutofill);
+    if (btnSurveyRetry) btnSurveyRetry.addEventListener('click', startSurveyAutofill);
+    if (btnSurveySkip) btnSurveySkip.addEventListener('click', skipSurvey);
+    if (btnSurveyProgressSkip) btnSurveyProgressSkip.addEventListener('click', skipSurvey);
+
+    // Initial poll immediate, then interval 1200ms
+    pollStatus();
+    pollInterval = setInterval(pollStatus, 1200);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,1368 @@
+{% extends "base.html" %}
+
+{% block title %}Login | LMS+{% endblock %}
+
+{% block meta %}
+    <meta name="description" content="Login to LMS+ to track your Bahria University attendance, assignments, and timetable securely in a lightning-fast dashboard.">
+    <meta name="keywords" content="bahria lms login, bahria cms login, bahria university student portal, lms+ login">
+    <meta name="robots" content="index, follow">
+    
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lmsplus.xyz/auth/login">
+    <meta property="og:title" content="Login | LMS+">
+    <meta property="og:description" content="Login to LMS+ to track your Bahria University attendance, assignments, and timetable securely in a lightning-fast dashboard.">
+    <meta property="og:image" content="https://lmsplus.xyz/static/images/og-preview.png">
+
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://lmsplus.xyz/auth/login">
+    <meta property="twitter:title" content="Login | LMS+">
+    <meta property="twitter:description" content="Login to LMS+ to track your Bahria University attendance, assignments, and timetable securely in a lightning-fast dashboard.">
+    <meta property="twitter:image" content="https://lmsplus.xyz/static/images/og-preview.png">
+
+    <link rel="canonical" href="https://lmsplus.xyz/auth/login">
+    {% if config.get("TURNSTILE_SITE_KEY") %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Reset global layout constraints for the unauthenticated page */
+.app-container {
+    display: block;
+}
+
+.app-container > main.content {
+    padding: 0 !important;
+    padding-top: 0 !important;
+    overflow: visible;
+}
+
+.login-container {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: var(--bg-primary, #0f172a);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    padding: 1rem 2rem;
+    box-sizing: border-box;
+    width: 100%;
+    position: relative;
+    overflow-x: hidden;
+    overflow-y: auto;
+    animation: panGrid 40s linear infinite;
+}
+
+@keyframes panGrid {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 32px; }
+}
+
+.login-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, transparent 0%, var(--bg-primary, #0f172a) 120%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Animated Aurora */
+.login-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80vw;
+    height: 80vw;
+    max-width: 800px;
+    max-height: 800px;
+    background: radial-gradient(circle, var(--primary-color, #3b82f6) 0%, transparent 60%);
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 0;
+    animation: auroraPulse 12s ease-in-out infinite alternate;
+}
+
+@keyframes auroraPulse {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.04; }
+    100% { transform: translate(-50%, -40%) scale(1.15); opacity: 0.12; }
+}
+
+
+/* Meteor Shower */
+.meteor-shower {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 1;
+    pointer-events: none;
+}
+.meteor {
+    position: absolute;
+    width: 150px;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 100%);
+    transform: rotate(-45deg);
+    animation: meteorAnim 6s linear infinite;
+    opacity: 0;
+    will-change: transform, opacity;
+}
+.meteor::before {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #fff;
+    right: 0;
+    top: -1.5px;
+    box-shadow: 0 0 10px 2px rgba(255,255,255, 0.8);
+}
+
+@keyframes meteorAnim {
+    0% { transform: rotate(-45deg) translateX(-300px); opacity: 0; }
+    10% { opacity: 1; }
+    20% { transform: rotate(-45deg) translateX(100vw); opacity: 0; }
+    100% { transform: rotate(-45deg) translateX(100vw); opacity: 0; }
+}
+
+.meteor:nth-child(1) { top: 5%; left: 10%; animation-delay: 0s; animation-duration: 8s; }
+.meteor:nth-child(2) { top: 15%; left: 70%; animation-delay: 3s; animation-duration: 7s; }
+.meteor:nth-child(3) { top: 35%; left: 30%; animation-delay: 5s; animation-duration: 9s; }
+.meteor:nth-child(4) { top: 55%; left: 80%; animation-delay: 7s; animation-duration: 10s; }
+.meteor:nth-child(5) { top: 75%; left: 20%; animation-delay: 2s; animation-duration: 8s; }
+.meteor:nth-child(6) { top: -10%; left: 50%; animation-delay: 4s; animation-duration: 6s; }
+
+:root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Premium Card */
+.login-card {
+    background: rgba(11, 15, 25, 0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 1.5rem 2rem;
+    width: 100%;
+    max-width: 400px;
+    box-sizing: border-box;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    position: relative;
+    z-index: 10;
+    animation: cardEntrance 0.6s var(--ease-out) both;
+}
+
+@keyframes cardEntrance {
+    from { opacity: 0; transform: translateY(24px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Staggered form elements */
+.login-header,
+.form-group,
+.remember-forgot,
+.login-btn,
+.turnstile-wrapper,
+.login-footer {
+    animation: itemEntrance 0.5s var(--ease-out) both;
+}
+
+@keyframes itemEntrance {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.login-header { animation-delay: 0.1s; }
+.login-form .form-group:nth-child(2) { animation-delay: 0.15s; }
+.login-form .form-group:nth-child(3) { animation-delay: 0.2s; }
+.login-form .form-group:nth-child(4) { animation-delay: 0.25s; }
+.login-form .form-group:nth-child(5) { animation-delay: 0.3s; }
+.login-form .form-group:nth-child(6) { animation-delay: 0.35s; }
+.remember-forgot { animation-delay: 0.4s; }
+.turnstile-wrapper { animation-delay: 0.45s; }
+.login-btn { animation-delay: 0.5s; }
+.login-footer { animation-delay: 0.55s; }
+
+@media (prefers-reduced-motion: reduce) {
+    .login-card, .login-header, .form-group, .remember-forgot, .login-btn, .turnstile-wrapper, .login-footer {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 1.25rem;
+}
+
+.login-logo {
+    display: flex;
+    justify-content: center;
+}
+
+.login-logo img {
+    height: 4.5rem;
+    width: auto;
+    border-radius: 12px;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.login-logo img:hover {
+    transform: scale(1.05) translateY(-4px);
+    filter: drop-shadow(0 10px 20px rgba(255, 255, 255, 0.15));
+}
+
+/* Form Inputs */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+.form-group {
+    position: relative;
+    margin-bottom: 0 !important;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-group:focus-within {
+    transform: scale(1.02);
+}
+
+.input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.form-input {
+    width: 100%;
+    height: 2.75rem;
+    padding: 0 1.5rem 0 3rem;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9999px;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover, 
+.form-input:-webkit-autofill:focus, 
+.form-input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.form-input.is-invalid {
+    border-color: rgba(239, 68, 68, 0.7) !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
+    animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake { 
+    0%, 100% { transform: translateX(0); } 
+    25% { transform: translateX(-4px); } 
+    75% { transform: translateX(4px); } 
+}
+
+/* In-Flow Field Error Note (Zero overlap with other inputs) */
+.field-error-note {
+    font-size: 0.775rem;
+    color: #f87171;
+    margin-top: 0.45rem;
+    padding: 0 0.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    line-height: 1.4;
+    animation: fieldErrorSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fieldErrorSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.field-error-note i {
+    color: #f87171;
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+}
+
+.field-error-note code {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.73rem;
+    font-weight: 600;
+}
+
+.field-error-note .example-hint {
+    color: #94a3b8;
+    margin-left: 0.2rem;
+}
+
+.form-input::placeholder {
+    color: var(--text-muted);
+}
+
+.form-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.form-icon {
+    position: absolute;
+    left: 1.2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.form-input:focus ~ .form-icon {
+    color: var(--primary-color);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.form-password-toggle {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 0.5rem;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    font-size: 1rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.2s;
+    padding: 0 1rem;
+    z-index: 10;
+    border-radius: 9999px;
+}
+
+.form-password-toggle:hover {
+    color: var(--text-primary);
+}
+
+.form-password-toggle:focus-visible {
+    outline: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.input-wrapper:has(.form-password-toggle) .form-input,
+.form-group:has(.form-password-toggle) .form-input,
+.form-input[type="password"] {
+    padding-right: 3rem;
+}
+
+.remember-forgot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.remember-me {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.remember-me input[type="checkbox"] {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.remember-me input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.remember-me input[type="checkbox"]:checked {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.remember-me input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 3px;
+    width: 4px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.remember-me input[type="checkbox"]:checked::after {
+    transform: rotate(45deg) scale(1);
+}
+
+.forgot-password {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.forgot-password:hover {
+    color: var(--text-primary);
+}
+
+/* Clean Primary Button */
+.login-btn {
+    width: 100%;
+    height: 2.75rem;
+    margin-top: 0.25rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 9999px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.login-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+    transform: skewX(-20deg);
+    animation: buttonShine 8s infinite;
+}
+
+@keyframes buttonShine {
+    0%, 70% { left: -100%; }
+    100% { left: 200%; }
+}
+
+.login-btn:hover {
+    background: var(--primary-hover, #2563eb);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+
+.login-btn:active {
+    transform: scale(0.97);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.15);
+}
+
+.login-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg-primary, #0f172a), 0 0 0 4px var(--primary-color);
+}
+
+/* Redesigned Info Badge */
+.info-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 1.25rem;
+    transition: all 0.3s ease;
+}
+
+.info-badge:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.info-badge-icon {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-badge-text {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+}
+
+.info-badge-text strong {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    margin-bottom: 0.1rem;
+}
+
+.info-badge-text span {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+/* Static Campus Badge */
+.campus-selector {
+    width: 100%;
+    height: 2.75rem;
+    padding: 0 1.5rem 0 3rem;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9999px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: not-allowed;
+    user-select: none;
+}
+
+.campus-selector:focus-visible {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.helper-note {
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+    padding-left: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    animation: fadeInDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.helper-note.warning { color: var(--warning-color); }
+.helper-note.info { color: var(--primary-color); }
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 1.25rem;
+    font-size: 0.85rem;
+}
+
+/* Loading animation (inline spinner on button) */
+.loading-spinner-inline {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+.login-btn.is-loading .loading-spinner-inline {
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* =============================================
+   FULL-SCREEN LOGIN LOADING OVERLAY
+   ============================================= */
+.login-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.85); /* Deep slate with opacity */
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: overlayFadeIn 0.4s ease-out;
+}
+
+.login-loading-overlay.active {
+    display: flex;
+}
+
+@keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.login-loading-card {
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 24px;
+    padding: 3rem 3.5rem;
+    text-align: center;
+    animation: loadingCardSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 380px;
+    width: 90%;
+    box-shadow: 
+        0 30px 60px -10px rgba(0, 0, 0, 0.8), 
+        0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+@keyframes loadingCardSlideUp {
+    from { transform: translateY(30px) scale(0.95); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+
+
+/* Progress bar container */
+.login-progress-container {
+    width: 100%;
+    margin-bottom: 1.5rem;
+}
+
+.login-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.login-progress-bar {
+    height: 100%;
+    width: 100%;
+    background: var(--primary-color);
+    border-radius: 2px;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.login-progress-percentage {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-align: right;
+}
+
+/* Status message */
+.login-loading-status {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    letter-spacing: -0.01em;
+}
+
+.login-loading-substatus {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .login-container {
+        padding: 1rem;
+        align-items: center;
+    }
+
+    .login-card {
+        padding: 1.25rem 1.25rem;
+        border-radius: 16px;
+    }
+
+    .login-logo img {
+        height: 3.5rem;
+    }
+
+    .login-title {
+        font-size: 1.4rem;
+    }
+
+    .form-input {
+        height: 3rem;
+    }
+
+    .login-btn {
+        height: 3rem;
+    }
+
+    .login-loading-card {
+        padding: 2rem 1.5rem;
+        border-radius: 20px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block unauthenticated_content %}
+<div class="login-container">
+
+    <div class="meteor-shower">
+        <div class="meteor"></div>
+        <div class="meteor"></div>
+        <div class="meteor"></div>
+        <div class="meteor"></div>
+        <div class="meteor"></div>
+        <div class="meteor"></div>
+    </div>
+    
+    <div style="flex: 1; min-height: 0;"></div>
+
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">
+                <img src="{{ url_for('static', filename='logo-transparent.webp') }}" alt="LMS+ Logo">
+            </div>
+        </div>
+
+        <form method="POST" class="login-form" id="loginForm" aria-label="Login form" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <!-- Honeypot field (hidden from real users, filled by bots) -->
+            <input type="text" name="website_url" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        name="username" 
+                        id="username" 
+                        class="form-input" 
+                        placeholder="e.g., 02-000000-008"
+                        required
+                        autocomplete="username"
+                    >
+                    <i class="form-icon fas fa-user" aria-hidden="true"></i>
+                </div>
+                <div id="usernameError" class="field-error-note" style="display: none;" role="alert">
+                    <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                    <span class="field-error-text"></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <input 
+                        type="password" 
+                        name="password" 
+                        id="password" 
+                        class="form-input" 
+                        placeholder="Enter password"
+                        required
+                        autocomplete="current-password"
+                    >
+                    <i class="form-icon fas fa-lock" aria-hidden="true"></i>
+                    <button class="form-password-toggle" onclick="togglePasswordVisibility(event, 'password')" type="button" aria-label="Toggle password visibility">
+                        <i class="fas fa-eye" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div id="passwordError" class="field-error-note" style="display: none;" role="alert">
+                    <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                    <span class="field-error-text"></span>
+                </div>
+            </div>
+
+            <input type="hidden" name="institute_id" id="institute_id" value="2">
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <div class="campus-selector" 
+                         id="campusDisplay"
+                         role="button" 
+                         tabindex="0"
+                         aria-haspopup="false"
+                         aria-disabled="true"
+                         onclick="document.getElementById('campusNote').style.display='flex';"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('campusNote').style.display='flex';}">
+                        Karachi Campus
+                    </div>
+                    <i class="form-icon fas fa-map-marker-alt" aria-hidden="true"></i>
+                </div>
+                <div id="campusNote" class="helper-note warning" style="display: none;" role="alert">
+                    <i class="fas fa-info-circle" aria-hidden="true"></i> Campus auto-detected from your Bahria enrollment prefix.
+                </div>
+            </div>
+
+            {% if request.args.get('add_account') %}
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        name="cms_username" 
+                        id="cms_username"
+                        class="form-input" 
+                        placeholder="e.g., 02-000000-008"
+                        required
+                    >
+                    <i class="form-icon fas fa-user-plus" aria-hidden="true"></i>
+                </div>
+                <div id="cmsUsernameError" class="field-error-note" style="display: none;" role="alert">
+                    <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                    <span class="field-error-text"></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <input 
+                        type="password" 
+                        name="cms_password" 
+                        id="cms_password"
+                        class="form-input" 
+                        placeholder="Enter password"
+                        required
+                    >
+                    <i class="form-icon fas fa-lock" aria-hidden="true"></i>
+                    <button class="form-password-toggle" onclick="togglePasswordVisibility(event, 'cms_password')" type="button">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <input type="hidden" name="cms_institute_id" id="cms_institute_id" value="2">
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <div class="campus-selector" 
+                         id="cmsCampusDisplay"
+                         role="button" 
+                         tabindex="0"
+                         aria-haspopup="false"
+                         aria-disabled="true"
+                         onclick="document.getElementById('cmsCampusNote').style.display='flex';"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('cmsCampusNote').style.display='flex';}">
+                        Karachi Campus
+                    </div>
+                    <i class="form-icon fas fa-map-marker-alt" aria-hidden="true"></i>
+                </div>
+                <div id="cmsCampusNote" class="helper-note warning" style="display: none;" role="alert">
+                    <i class="fas fa-info-circle" aria-hidden="true"></i> Campus auto-detected from your Bahria enrollment prefix.
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="remember-forgot">
+                <label class="remember-me">
+                    <input type="checkbox" name="remember" class="form-checkbox">
+                    Remember me
+                </label>
+                <a href="#" class="forgot-password" onclick="document.getElementById('forgotNote').style.display='flex'; return false;">Forgot password?</a>
+            </div>
+            
+            <div id="forgotNote" class="helper-note info" style="display: none; justify-content: center; margin-top: 0; margin-bottom: 1rem; text-align: center;">
+                <i class="fas fa-info-circle"></i> Please reset your password by visiting the CMS portal.
+            </div>
+
+            {% if config.get('TURNSTILE_SITE_KEY') %}
+            <div class="turnstile-wrapper" style="margin-bottom: 0.75rem; display: flex; justify-content: center; min-height: 65px; border-radius: 12px; overflow: hidden; transform: translateZ(0);">
+                <div class="cf-turnstile" data-sitekey="{{ config.get('TURNSTILE_SITE_KEY') }}" data-action="login" data-theme="dark"></div>
+            </div>
+            {% endif %}
+
+            <button type="submit" class="btn btn-primary login-btn" id="loginBtn">
+                <span class="loading-spinner-inline"></span>
+                <span class="btn-text">
+                    {% if request.args.get('add_account') %}
+                        Add CMS Account
+                    {% else %}
+                        Sign In
+                    {% endif %}
+                </span>
+            </button>
+        </form>
+
+        <div class="login-footer">
+            <button class="author-badge" id="footerAuthorBtnUnauth" type="button">
+                <span class="badge-text">Made by</span>
+                <span class="badge-author">SAMI</span>
+            </button>
+        </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0;"></div>
+</div>
+
+<!-- Full-screen Loading Overlay -->
+<div class="login-loading-overlay" id="loginLoadingOverlay">
+    <div class="login-loading-card">
+        <div class="login-progress-container">
+            <div class="login-progress-track">
+                <div class="login-progress-bar" id="loginProgressBar"></div>
+            </div>
+            <div class="login-progress-percentage" id="loginProgressPercent">0%</div>
+        </div>
+
+        <p class="login-loading-status" id="loginLoadingStatus">Connecting to CMS...</p>
+        <p class="login-loading-substatus">Please wait while we establish a secure connection</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block unauth_footer %}{% endblock %}
+
+{% block extra_js %}
+<script>
+function togglePasswordVisibility(event, passwordId) {
+    event.preventDefault();
+    const passwordInput = document.getElementById(passwordId);
+    const icon = event.currentTarget.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    const loginBtn = document.getElementById('loginBtn');
+    const btnText = loginBtn.querySelector('.btn-text');
+    const overlay = document.getElementById('loginLoadingOverlay');
+    const progressBar = document.getElementById('loginProgressBar');
+    const progressPercent = document.getElementById('loginProgressPercent');
+    const statusText = document.getElementById('loginLoadingStatus');
+
+    // Status messages that cycle during loading
+    const statusMessages = [
+        { text: 'Connecting to CMS...', at: 0 },
+        { text: 'Verifying credentials...', at: 20 },
+        { text: 'Authenticating your account...', at: 40 },
+        { text: 'Loading your data...', at: 60 },
+        { text: 'Preparing your dashboard...', at: 80 },
+        { text: 'Almost there...', at: 92 }
+    ];
+
+    let progressInterval = null;
+    let currentProgress = 0;
+
+    function showLoadingOverlay() {
+        overlay.classList.add('active');
+        currentProgress = 0;
+        updateProgress(0);
+
+        // Animate progress gradually (simulate up to 90% over ~12 seconds)
+        progressInterval = setInterval(function() {
+            if (currentProgress < 90) {
+                // Slow down as it gets higher
+                const increment = currentProgress < 30 ? 2 : currentProgress < 60 ? 1.5 : 0.5;
+                currentProgress = Math.min(currentProgress + increment, 90);
+                updateProgress(currentProgress);
+            }
+        }, 300);
+    }
+
+    function updateProgress(value) {
+        const rounded = Math.round(value);
+        progressBar.style.transform = `scaleX(${rounded / 100})`;
+        progressPercent.textContent = rounded + '%';
+
+        // Update status message based on progress
+        for (let i = statusMessages.length - 1; i >= 0; i--) {
+            if (rounded >= statusMessages[i].at) {
+                statusText.textContent = statusMessages[i].text;
+                break;
+            }
+        }
+    }
+
+    function hideLoadingOverlay() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+        overlay.classList.remove('active');
+    }
+
+    function completeProgress() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+        updateProgress(100);
+        statusText.textContent = 'Redirecting...';
+    }
+
+    function setFieldError(inputEl, errorEl, htmlMessage) {
+        clearAllFieldErrors();
+        if (!inputEl || !errorEl) return;
+
+        inputEl.classList.add('is-invalid');
+        const textSpan = errorEl.querySelector('.field-error-text') || errorEl;
+        textSpan.innerHTML = htmlMessage;
+        errorEl.style.display = 'flex';
+        inputEl.focus();
+
+        const removeOnInput = () => {
+            clearFieldError(inputEl, errorEl);
+            inputEl.removeEventListener('input', removeOnInput);
+        };
+        inputEl.addEventListener('input', removeOnInput);
+    }
+
+    function clearFieldError(inputEl, errorEl) {
+        if (inputEl) inputEl.classList.remove('is-invalid');
+        if (errorEl) errorEl.style.display = 'none';
+    }
+
+    function clearAllFieldErrors() {
+        document.querySelectorAll('.form-input.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+        document.querySelectorAll('.field-error-note').forEach(el => { el.style.display = 'none'; });
+    }
+
+    // Bahria Campus Map (01-15)
+    const CAMPUS_MAP = {
+        '01': { id: '1', name: 'Islamabad E-8 Campus' },
+        '02': { id: '2', name: 'Karachi Campus' },
+        '03': { id: '3', name: 'Lahore Campus' },
+        '04': { id: '4', name: 'NCMPR' },
+        '05': { id: '5', name: 'IPP (Karachi)' },
+        '06': { id: '6', name: 'Health Sciences (Karachi)' },
+        '07': { id: '7', name: 'PN School Of Logistics' },
+        '08': { id: '8', name: 'PN Nursing College' },
+        '09': { id: '9', name: 'Islamabad H-11 Campus' },
+        '10': { id: '10', name: 'Finishing School' },
+        '11': { id: '11', name: 'National School of Hydrography' },
+        '12': { id: '12', name: 'Health Sciences (Islamabad)' },
+        '13': { id: '13', name: 'BU College of Nursing' },
+        '14': { id: '14', name: 'ODL' },
+        '15': { id: '15', name: 'School for Underwater Medicine' }
+    };
+
+    // Campus auto-switching logic
+    function handleCampusAutoSwitch(inputEl, displayEl, hiddenInputEl) {
+        if (!inputEl || !displayEl) return;
+        const val = inputEl.value.trim();
+        const prefix = val.length >= 2 ? val.substring(0, 2) : '';
+        const match = CAMPUS_MAP[prefix];
+        if (match) {
+            displayEl.textContent = match.name;
+            if (hiddenInputEl) hiddenInputEl.value = match.id;
+        } else {
+            displayEl.textContent = 'Karachi Campus';
+            if (hiddenInputEl) hiddenInputEl.value = '2';
+        }
+    }
+
+    const usernameInput = document.getElementById('username');
+    const campusDisplay = document.getElementById('campusDisplay');
+    const instituteIdInput = document.getElementById('institute_id');
+    if (usernameInput) {
+        usernameInput.addEventListener('input', function() {
+            handleCampusAutoSwitch(usernameInput, campusDisplay, instituteIdInput);
+        });
+        handleCampusAutoSwitch(usernameInput, campusDisplay, instituteIdInput);
+    }
+
+    const cmsUsernameInput = document.getElementById('cms_username');
+    const cmsCampusDisplay = document.getElementById('cmsCampusDisplay');
+    const cmsInstituteIdInput = document.getElementById('cms_institute_id');
+    if (cmsUsernameInput) {
+        cmsUsernameInput.addEventListener('input', function() {
+            handleCampusAutoSwitch(cmsUsernameInput, cmsCampusDisplay, cmsInstituteIdInput);
+        });
+        handleCampusAutoSwitch(cmsUsernameInput, cmsCampusDisplay, cmsInstituteIdInput);
+    }
+
+    loginForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        clearAllFieldErrors();
+
+        const enrollmentRegex = /^(0[1-9]|1[0-5])-\d{6}-\d{3}$/;
+        const usernameError = document.getElementById('usernameError');
+        const usernameVal = (usernameInput ? usernameInput.value : '').trim();
+
+        const passwordInput = document.getElementById('password');
+        const passwordError = document.getElementById('passwordError');
+        const passwordVal = (passwordInput ? passwordInput.value : '');
+
+        if (!usernameVal) {
+            setFieldError(
+                usernameInput, 
+                usernameError, 
+                'Enrollment number is required <span class="example-hint">(e.g., 01-000000-016 or 02-000000-008)</span>'
+            );
+            return;
+        }
+
+        if (!enrollmentRegex.test(usernameVal)) {
+            setFieldError(
+                usernameInput, 
+                usernameError, 
+                'Must follow Bahria format: <code>XX-XXXXXX-XXX</code> (prefix 01–15)'
+            );
+            return;
+        }
+
+        if (!passwordVal) {
+            setFieldError(
+                passwordInput, 
+                passwordError, 
+                'Password is required'
+            );
+            return;
+        }
+
+        const cmsUsernameError = document.getElementById('cmsUsernameError');
+        if (cmsUsernameInput && cmsUsernameError) {
+            const cmsVal = (cmsUsernameInput.value || '').trim();
+            if (!cmsVal) {
+                setFieldError(
+                    cmsUsernameInput, 
+                    cmsUsernameError, 
+                    'CMS Student ID is required'
+                );
+                return;
+            }
+            if (!enrollmentRegex.test(cmsVal)) {
+                setFieldError(
+                    cmsUsernameInput, 
+                    cmsUsernameError, 
+                    'Must follow Bahria format: <code>XX-XXXXXX-XXX</code> (prefix 01–15)'
+                );
+                return;
+            }
+        }
+
+        const isAddingAccount = btnText.textContent.includes('Add CMS Account');
+        const originalText = btnText.textContent;
+
+        // Add inline loading state on button
+        loginBtn.classList.add('is-loading');
+        loginBtn.disabled = true;
+        btnText.textContent = isAddingAccount ? 'Adding Account...' : 'Signing In...';
+
+        // Show the full-screen loading overlay
+        showLoadingOverlay();
+
+        const formData = new FormData(loginForm);
+
+        fetch('{{ url_for("auth.login") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams(formData),
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok) {
+                if (contentType.includes('application/json')) {
+                    return response.json().then(err => Promise.reject(err));
+                }
+                return Promise.reject({ error: 'Server error (' + response.status + '). Please try again.' });
+            }
+            if (contentType.includes('application/json')) {
+                return response.json();
+            }
+            return Promise.reject({ error: 'Unexpected server response. Please try again.' });
+        })
+        .then(data => {
+            if (data.success) {
+                // Complete the progress bar, then redirect
+                completeProgress();
+                setTimeout(function() {
+                    window.location.href = data.redirect_url;
+                }, 600);
+            } else {
+                hideLoadingOverlay();
+                showInlineError(data);
+                resetLoginButton();
+            }
+        })
+        .catch(error => {
+            console.error('Login error:', error);
+            hideLoadingOverlay();
+            showInlineError(error);
+            resetLoginButton();
+        });
+
+        function showInlineError(data) {
+            // Remove existing error if any
+            const existingError = document.getElementById('login-inline-error');
+            if (existingError) existingError.remove();
+            
+            const message = typeof data === 'string' ? data : (data.error || data.message || 'An unexpected error occurred. Please try again.');
+            const hasAction = data && typeof data === 'object' && data.action && data.action.url;
+            const isCmsDown = Boolean(
+                data && typeof data === 'object' && (data.is_cms_down || message.includes('CMS server is currently down') || message.includes('Bahria University CMS server is currently down'))
+            );
+            
+            const errorDiv = document.createElement('div');
+            errorDiv.id = 'login-inline-error';
+            
+            if (isCmsDown) {
+                // High-visibility CMS Outage Alert (Amber/Orange theme)
+                errorDiv.style.cssText = `
+                    background: linear-gradient(to right, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.03));
+                    border: 1px solid rgba(245, 158, 11, 0.35);
+                    border-left: 4px solid #f59e0b;
+                    color: #e2e8f0;
+                    padding: 1.15rem 1.25rem;
+                    border-radius: 10px;
+                    margin-bottom: 1.25rem;
+                    font-size: 0.9rem;
+                    line-height: 1.5;
+                    animation: itemEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
+                    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+                `;
+                
+                let html = `
+                    <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                        <i class="fas fa-server" style="margin-top: 0.2rem; color: #f59e0b; font-size: 1.1rem; flex-shrink: 0;"></i>
+                        <div>
+                            <div style="font-weight: 600; color: #fbbf24; font-size: 0.95rem; margin-bottom: 0.25rem; letter-spacing: -0.01em;">University CMS is Currently Down</div>
+                            <div style="font-weight: 400; color: #cbd5e1; font-size: 0.85rem; line-height: 1.45;">${message}</div>
+                        </div>
+                    </div>
+                `;
+                
+                const actionUrl = hasAction ? data.action.url : 'https://cms.bahria.edu.pk/Logins/Student/Login.aspx';
+                const actionText = hasAction ? data.action.text : 'Verify Bahria CMS Status →';
+                
+                html += `
+                    <div style="padding-left: 1.85rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                        <a href="${actionUrl}" target="_blank" rel="noopener noreferrer" 
+                           style="display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(245, 158, 11, 0.2); color: #fde68a; padding: 0.45rem 0.9rem; border-radius: 6px; font-size: 0.825rem; font-weight: 500; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.35); transition: all 0.2s ease;">
+                           <i class="fas fa-external-link-alt" style="font-size: 0.75rem;"></i>
+                           ${actionText}
+                        </a>
+                        <span style="font-size: 0.75rem; color: #94a3b8;">Not an LMS+ issue</span>
+                    </div>
+                `;
+                
+                errorDiv.innerHTML = html;
+            } else {
+                // High-end minimalist styling (Linear/Vercel aesthetic)
+                errorDiv.style.cssText = `
+                    background: linear-gradient(to right, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.02));
+                    border: 1px solid rgba(239, 68, 68, 0.15);
+                    border-left: 3px solid #ef4444;
+                    color: #e2e8f0;
+                    padding: 1.1rem 1.25rem;
+                    border-radius: 8px;
+                    margin-bottom: 1rem;
+                    font-size: 0.9rem;
+                    line-height: 1.5;
+                    animation: itemEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.85rem;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                `;
+                
+                let html = `
+                    <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                        <i class="fas fa-info-circle" style="margin-top: 0.2rem; color: #ef4444; font-size: 0.95rem;"></i>
+                        <div style="font-weight: 400; letter-spacing: -0.01em;">${message}</div>
+                    </div>
+                `;
+                
+                if (hasAction) {
+                    html += `
+                    <div style="padding-left: 1.7rem;">
+                        <a href="${data.action.url}" target="_blank" rel="noopener noreferrer" 
+                           style="display: inline-flex; align-items: center; background: rgba(88, 101, 242, 0.15); color: #93c5fd; padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; border: 1px solid rgba(88, 101, 242, 0.3); transition: all 0.2s ease;">
+                           ${data.action.text}
+                        </a>
+                    </div>
+                    `;
+                }
+                
+                errorDiv.innerHTML = html;
+            }
+            
+            // Add slight hover effect to action buttons natively via JS if exists
+            const btn = errorDiv.querySelector('a');
+            if (btn) {
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.filter = 'brightness(1.15)';
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.filter = 'none';
+                });
+            }
+            
+            loginForm.insertBefore(errorDiv, loginForm.firstChild);
+        }
+
+        function resetLoginButton() {
+            loginBtn.classList.remove('is-loading');
+            loginBtn.disabled = false;
+            btnText.textContent = originalText;
+            if (typeof turnstile !== 'undefined' && turnstile.reset) {
+                try {
+                    turnstile.reset();
+                } catch (e) {
+                    console.debug('Turnstile reset error:', e);
+                }
+            }
+        }
+    });
+
+});
+</script>
+{% endblock %}

@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "production": "unitrack-61e76",
+    "testing": "unitrack-testing"
+  },
+  "targets": {
+    "unitrack-61e76": {
+      "hosting": {
+        "production": ["unitrack-61e76"]
+      }
+    },
+    "unitrack-testing": {
+      "hosting": {
+        "testing": ["unitrack-testing"]
+      }
+    }
+  }
+}

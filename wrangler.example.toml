@@ -1,0 +1,9 @@
+name = "lms-plus-proxy"
+main = "cf_worker_merged.js"
+compatibility_date = "2026-09-28"
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true

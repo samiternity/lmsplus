@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Quizzes - LMS Portal{% endblock %}
+
+{% block header_actions %}
+<div id="courseRefreshActions" class="refresh-data-widget" style="display: none; margin-right: 1rem;">
+    <button type="button" id="refreshQuizzes" class="refresh-data-toggle" title="Refresh quizzes" aria-label="Refresh quizzes">
+        <i class="fas fa-sync-alt refresh-icon" aria-hidden="true"></i>
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+
+
+<!-- Unified Loading State -->
+<div id="initialLoadingState" class="unified-loading-container" {% if not load_via_ajax %}style="display: none;" {%
+    endif %}>
+    <div class="unified-loading-card">
+        <div class="unified-loading-icon">
+            <i class="fas fa-layer-group"></i>
+        </div>
+        <h3 class="unified-loading-title">Loading Quizzes</h3>
+        <p role="status" id="loadingStatusText" class="unified-loading-status">Connecting to LMS...</p>
+
+        <div class="unified-progress-bar-wrap">
+            <div class="unified-progress-bar" id="unifiedProgressBar" style="width: 0%"></div>
+        </div>
+
+        <div class="unified-steps" id="unifiedSteps">
+            <div class="unified-step" id="step-connect">
+                <span class="step-dot"></span>
+                <span class="step-label">Connecting to LMS</span>
+            </div>
+            <div class="unified-step" id="step-courses">
+                <span class="step-dot"></span>
+                <span class="step-label">Fetching semesters</span>
+            </div>
+            <div class="unified-step" id="step-quizzes">
+                <span class="step-dot"></span>
+                <span class="step-label">Loading quizzes</span>
+            </div>
+            <div class="unified-step" id="step-done">
+                <span class="step-dot"></span>
+                <span class="step-label">Finalizing</span>
+            </div>
+        </div>
+
+        <p id="loadingAttemptText" class="unified-loading-attempt"></p>
+    </div>
+</div>
+
+<!-- Main Content (hidden until data loads) -->
+<div id="mainContent" {% if load_via_ajax %}style="display: none;" {% endif %}>
+    <!-- Course Selection Bar -->
+    <div class="course-selection-bar animate-fade-in-up mb-4">
+        <div class="selection-item">
+            <label for="semesterSelect" class="selection-label">
+                Semester
+            </label>
+            <select id="semesterSelect" class="selection-dropdown">
+                <option value="">Loading semesters...</option>
+            </select>
+        </div>
+
+        <div class="selection-item">
+            <label for="courseSelect" class="selection-label">
+                Course
+            </label>
+            <select id="courseSelect" class="selection-dropdown">
+                <option value="" disabled hidden selected>Select a course...</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Loading Overlay (shown when loading course quizzes) -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <div class="loading-text-wrapper">
+                <div class="loading-text-scroller">
+                    <span class="loading-text">Connecting securely...</span>
+                    <span class="loading-text">Fetching course data...</span>
+                    <span class="loading-text">Organizing content...</span>
+                    <span class="loading-text">Almost ready...</span>
+                    <span class="loading-text">Connecting securely...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Quizzes Table -->
+    <div id="quizzesContainer" class="mt-6" style="display: none; margin-top: 1.5rem !important;">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive" role="region" aria-label="Quiz table, scroll horizontally to view all columns" tabindex="0">
+                    <table aria-label="Course quizzes" class="table table-hover mb-0 text-center align-middle">
+                        <thead class="table-light text-center">
+                            <tr>
+                                <th scope="col" class="px-4 py-3 text-center">Quiz No.</th>
+                                <th scope="col" class="px-4 py-3 text-start">Quiz Title</th>
+                                <th scope="col" class="px-4 py-3 text-center">Quiz</th>
+                                <th scope="col" class="px-4 py-3 text-center">Quiz Marks</th>
+                                <th scope="col" class="px-4 py-3 text-center">Quiz Solution</th>
+                            </tr>
+                        </thead>
+                        <tbody id="quizzesTableBody" class="text-center align-middle">
+                            <!-- Quizzes will be inserted here via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state-container" style="display: none;">
+        <div class="empty-state-content">
+            <div class="empty-state-icon">
+                <i class="fas fa-book-open"></i>
+            </div>
+            <h3 class="empty-state-title">No Course Selected</h3>
+            <p class="empty-state-message">Select a course from the dropdown above to view your quizzes</p>
+        </div>
+    </div>
+
+    <!-- Error State (for AJAX errors) -->
+    <div id="errorState" class="error-state-container" style="display: none;">
+        <div class="error-state-card">
+            <div class="error-state-icon">
+                <i class="fas fa-server"></i>
+            </div>
+            <h3 class="error-state-title">Unable to Connect</h3>
+            <p role="alert" id="errorMessage" class="error-state-message">The LMS server is currently unreachable.</p>
+            <div class="error-state-actions">
+                <button type="button" id="retryButton" class="btn btn-primary" >
+                    <i class="fas fa-redo"></i> Retry
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Error State (shown if initial connection fails) -->
+<div id="connectionErrorState" class="error-state-container" style="display: none;">
+    <div class="error-state-card">
+        <div class="error-state-icon">
+            <i class="fas fa-server"></i>
+        </div>
+        <h3 class="error-state-title">Unable to Connect</h3>
+        <p role="alert" id="connectionErrorMessage" class="error-state-message">The LMS server is currently unreachable.</p>
+        <div class="error-state-actions">
+            <button type="button" id="connectionRetryButton" class="btn btn-primary" >
+                <i class="fas fa-redo"></i> Retry
+            </button>
+        </div>
+    </div>
+</div>
+<p id="quizStatus" role="status" class="quiz-status" style="display: none;"></p>
+
+{% endblock %}
+
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+<link href="{{ url_for('static', filename='css/lms_quizzes.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/lms_quizzes.js') }}"></script>
+{% endblock %}
