@@ -319,7 +319,9 @@ class DataManager:
                     dict_data = session_data
                     if isinstance(session_data, requests.cookies.RequestsCookieJar):
                         dict_data = requests.utils.dict_from_cookiejar(session_data)
-                    fs.save_document('account_data', f'{account_id}_cms_session', {'cookies': dict_data})
+                    from app.utils.session_encryption import encrypt_session
+                    doc_id = f'{account_id}_cms_session'
+                    fs.save_document('account_data', doc_id, encrypt_session(doc_id, {'cookies': dict_data}))
                     from app.utils.lms_logger import resolve_enrollment
                     print(f"[DATA_MGR] Saved cms_session to Firestore for {resolve_enrollment(account_id)}")
                 except Exception as e:
@@ -347,7 +349,9 @@ class DataManager:
             fs = get_firestore_service()
             if fs.is_available():
                 try:
-                    data = fs.get_document('account_data', f'{account_id}_cms_session')
+                    from app.utils.session_encryption import decrypt_session
+                    doc_id = f'{account_id}_cms_session'
+                    data = decrypt_session(doc_id, fs.get_document('account_data', doc_id))
                     if data and 'cookies' in data:
                         import requests
                         jar = requests.cookies.RequestsCookieJar()

@@ -2,8 +2,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 import os
+import hmac
+import secrets
+import time
 import requests
-from flask import Blueprint, redirect, request, url_for, flash, current_app, jsonify, abort
+from flask import Blueprint, redirect, request, url_for, flash, current_app, jsonify, abort, session
 from flask_login import login_required, current_user
 import urllib.parse
 from app.models.account import account_manager
@@ -11,6 +14,7 @@ from app.models.account import account_manager
 discord_oauth_bp = Blueprint('discord_oauth', __name__)
 
 DISCORD_API_BASE_URL = 'https://discord.com/api/v10'
+DISCORD_LINK_STATE_TTL = 600
 
 @discord_oauth_bp.route('/login')
 @login_required
@@ -30,13 +34,19 @@ def login():
         else:
             redirect_uri = redirect_uri.replace('http://', 'https://')
         
+    state = secrets.token_urlsafe(32)
+    session['discord_link'] = {
+        'state': state,
+        'user_id': current_user.get_id(),
+        'expires_at': int(time.time()) + DISCORD_LINK_STATE_TTL,
+    }
     scopes = 'identify guilds.join'
     
     auth_url = (
         f"{DISCORD_API_BASE_URL}/oauth2/authorize"
         f"?client_id={client_id}"
         f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
-        f"&response_type=code"
+        f"&response_type=code&state={state}"
         f"&scope={urllib.parse.quote(scopes)}"
     )
     
@@ -46,6 +56,19 @@ def login():
 @login_required
 def callback():
     """Handle the OAuth2 callback from Discord."""
+    pending = session.get('discord_link')
+    supplied_state = request.args.get('state', '')
+    if (
+        not pending
+        or pending['user_id'] != current_user.get_id()
+        or pending['expires_at'] <= time.time()
+        or not supplied_state.isascii()
+        or not hmac.compare_digest(pending['state'], supplied_state)
+    ):
+        flash("Discord linking expired or was invalid. Start again from settings.", "warning")
+        return redirect(url_for('settings.settings'))
+
+    session.pop('discord_link')
     code = request.args.get('code')
     error = request.args.get('error')
     

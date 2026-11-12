@@ -628,7 +628,10 @@ class LMSSessionManager:
             from app.services.firestore_service import get_firestore_service
             fs = get_firestore_service()
             if fs.is_available():
-                fs.save_document('account_data', f'{account_id}_lms_session', session_data)
+                from app.utils.session_encryption import encrypt_session
+                doc_id = f'{account_id}_lms_session'
+                if not fs.save_document('account_data', doc_id, encrypt_session(doc_id, session_data)):
+                    return False
                 logger.debug(f"Saved LMS session to Firestore for account {account_id}")
                 return True
         except Exception as e:
@@ -641,7 +644,9 @@ class LMSSessionManager:
             from app.services.firestore_service import get_firestore_service
             fs = get_firestore_service()
             if fs.is_available():
-                data = fs.get_document('account_data', f'{account_id}_lms_session')
+                from app.utils.session_encryption import decrypt_session
+                doc_id = f'{account_id}_lms_session'
+                data = decrypt_session(doc_id, fs.get_document('account_data', doc_id))
                 if data:
                     logger.debug(f"Loaded LMS session from Firestore for account {account_id}")
                     return data

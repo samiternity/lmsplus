@@ -86,3 +86,15 @@ staging-rollback/
 /docs/private/
 /docs/SECURITY_VULNERABILITY_REPORT.md
 /.codex/
+
+# Local security audit reports
+/security-audit-skill/
+/security-audit/
+/lmsplus-security-audit/
+**/run-metadata.json
+**/coverage-ledger.json
+**/findings.json
+**/FINDINGS-DETAIL.md
+**/NEEDS-VALIDATION.md
+/REPORT.md
+/architecture.md

@@ -109,31 +109,19 @@ class LMSFileProxyService:
         Raises:
             LMSFileValidationError: When URL is invalid
         """
+        if not file_url or any(char.isspace() or ord(char) < 32 or char == '\\' for char in file_url):
+            raise LMSFileValidationError("Invalid LMS file URL.")
         try:
-            if not file_url or not file_url.strip():
-                raise LMSFileValidationError("Empty file URL")
-            
-            # Parse URL
+            file_url = urljoin(self.lms_base_url, file_url)
             parsed = urlparse(file_url)
-            
-            # Convert relative URLs to absolute
-            if not parsed.netloc:
-                file_url = urljoin(self.lms_base_url, file_url)
-                parsed = urlparse(file_url)
-            
-            # Validate domain (security check)
-            allowed_domains = ['lms.bahria.edu.pk', 'bahria.edu.pk']
-            if not any(domain in parsed.netloc.lower() for domain in allowed_domains):
-                logger.warning(f"File URL from untrusted domain: {parsed.netloc}")
-                # Allow but log warning for monitoring
-            
-            logger.debug(f"Validated file URL: {file_url}")
-            return file_url
-            
-        except Exception as e:
-            logger.error(f"File URL validation failed: {e}")
-            raise LMSFileValidationError(f"Invalid file URL: {e}")
-    
+        except ValueError:
+            raise LMSFileValidationError("Invalid LMS file URL.") from None
+        if parsed.scheme != 'https' or parsed.netloc.lower() not in {
+            'lms.bahria.edu.pk', 'lms.bahria.edu.pk:443'
+        }:
+            raise LMSFileValidationError("Invalid LMS file URL.")
+        return file_url
+
     def _extract_filename_from_url(self, file_url: str) -> str:
         """
         Extract filename from URL.
@@ -218,40 +206,42 @@ class LMSFileProxyService:
             # Create authenticated session
             session = self._create_authenticated_session(account_id)
             
-            # Make HEAD request to get metadata
+            response = None
             try:
-                response = session.head(
-                    validated_url,
-                    timeout=self.config['timeout'],
-                    allow_redirects=True
-                )
-                response.raise_for_status()
-            except requests.RequestException as e:
-                log_warning(f"HEAD request failed, trying GET with range: {e}",
-                           account_id=account_id, operation="get_file_metadata", 
-                           error_type="head_request_failed")
-                # Fallback to GET with range header
-                headers = {'Range': 'bytes=0-0'}
-                response = session.get(
-                    validated_url,
-                    headers=headers,
-                    timeout=self.config['timeout'],
-                    stream=True
-                )
-                response.raise_for_status()
-            
+                try:
+                    response = session.head(
+                        validated_url, timeout=self.config['timeout'], allow_redirects=False
+                    )
+                    if 300 <= response.status_code < 400:
+                        raise LMSFileError("LMS file redirects are not supported.")
+                    response.raise_for_status()
+                except requests.RequestException:
+                    if response is not None:
+                        response.close()
+                        response = None
+                    response = session.get(
+                        validated_url, headers={'Range': 'bytes=0-0'},
+                        timeout=self.config['timeout'], stream=True, allow_redirects=False
+                    )
+                    if not 200 <= response.status_code < 300:
+                        raise LMSFileError("LMS file metadata is unavailable.")
+                headers = response.headers.copy()
+            finally:
+                if response is not None:
+                    response.close()
+
             # Extract metadata
             filename = self._extract_filename_from_url(validated_url)
             
             # Get content type
-            content_type = response.headers.get('content-type', 'application/octet-stream')
+            content_type = headers.get('content-type', 'application/octet-stream')
             
             # Get file size
-            content_length = response.headers.get('content-length')
+            content_length = headers.get('content-length')
             file_size = int(content_length) if content_length else None
             
             # Get last modified
-            last_modified_str = response.headers.get('last-modified')
+            last_modified_str = headers.get('last-modified')
             last_modified = None
             if last_modified_str:
                 try:
@@ -343,6 +333,7 @@ class LMSFileProxyService:
         Raises:
             LMSFileError: When download fails
         """
+        response = None
         try:
             # Validate URL
             validated_url = self._validate_file_url(file_url)
@@ -358,9 +349,11 @@ class LMSFileProxyService:
             response = session.get(
                 validated_url,
                 timeout=self.config['timeout'],
-                stream=True
+                stream=True,
+                allow_redirects=False
             )
-            response.raise_for_status()
+            if not 200 <= response.status_code < 300:
+                raise LMSFileError("LMS file download failed.")
             
             # Check file size if available
             content_length = response.headers.get('content-length')
@@ -401,7 +394,10 @@ class LMSFileProxyService:
                      account_id=account_id, operation="download_file_stream", 
                      error_type="system_error", exc_info=True)
             raise LMSFileError(f"Download failed: {e}")
-    
+        finally:
+            if response is not None:
+                response.close()
+
     def validate_upload_file(self, file_data: FileStorage, 
                            assignment_requirements: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """

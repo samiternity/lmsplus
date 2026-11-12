@@ -545,7 +545,7 @@ class CMSAccount:
         self.data_directory = account_manager.get_account_directory(account_id)
         self.lms_credentials = lms_credentials  # LMSCredentials object
     
-    def to_dict(self, encrypt_password=True):
+    def to_dict(self):
         """Convert account to dictionary for storage"""
         from app.routes.auth import get_institute_id_for_enrollment
         data = {
@@ -559,13 +559,11 @@ class CMSAccount:
             'last_login': self.last_login
         }
         
-        if encrypt_password and self.cms_password:
+        if self.cms_password:
             data['cms_password_encrypted'] = account_manager.encrypt_data(self.cms_password)
-        elif encrypt_password and getattr(self, '_raw_encrypted_password', None):
+        elif getattr(self, '_raw_encrypted_password', None):
             # Preserve existing ciphertext if decryption failed earlier, never wipe DB password
             data['cms_password_encrypted'] = self._raw_encrypted_password
-        else:
-            data['cms_password'] = self.cms_password
         
         # Include LMS credentials if available
         if self.lms_credentials:
