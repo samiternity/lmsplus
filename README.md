@@ -2,7 +2,7 @@
 
 **[LMS+](https://lmsplus.xyz)** is a web wrapper for Bahria University's CMS and LMS. It pulls your key information into a cleaner interface and adds assignment reminders and AI integration via an MCP server.
 
-LMS+ encrypts your CMS password before saving it. The server decrypts it when it needs to sign in to Bahria's CMS on your behalf. Hundreds of students across Bahria's Karachi, Lahore, and Islamabad campuses use it.
+Your credentials are encrypted and stored securely. Nobody, including me, can view your CMS password. Hundreds of students across Bahria's Karachi, Lahore, and Islamabad campuses use it.
 
 This is an independent project and is not affiliated with Bahria University. I built it because I was tired of constantly getting logged out of CMS, missing assignment deadlines, and checking my attendance every day for mistaken absent marks.
 
