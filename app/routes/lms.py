@@ -1540,11 +1540,7 @@ def refresh_data():
 @require_lms_authentication
 @limiter.limit("50 per day")
 def download_file(file_url):
-    """
-    File download proxy route.
-    Authenticates with LMS on the server side and streams the file back to the browser.
-    Also sets LMS session cookies on the browser response for direct future access.
-    """
+    """Download a file from the university LMS."""
     account_id = None
     try:
         account_id = get_active_account_id()
@@ -1552,18 +1548,21 @@ def download_file(file_url):
             flash('No active account found.', 'error')
             return redirect(url_for('main.dashboard'))
 
-        # Fix double-slash collapsing from Flask path routing
+        # Flask routing can collapse the double slash in an embedded URL.
         if file_url.startswith('https:/') and not file_url.startswith('https://'):
             file_url = file_url.replace('https:/', 'https://', 1)
-        elif file_url.startswith('http:/') and not file_url.startswith('http://'):
-            file_url = file_url.replace('http:/', 'http://', 1)
 
-        # Validate URL
-        if not file_url or not file_url.startswith(('http://', 'https://')):
-            flash('Invalid file URL provided.', 'error')
-            return redirect(request.referrer or url_for('lms.assignment_monitor'))
-
-        logger.info(f"Download requested for account {account_id}: {file_url}")
+        try:
+            target = urllib.parse.urlsplit(file_url)
+            allowed = (
+                target.scheme == 'https'
+                and target.netloc.lower() in {'lms.bahria.edu.pk', 'lms.bahria.edu.pk:443'}
+                and not any(char.isspace() or ord(char) < 32 or char == '\\' for char in file_url)
+            )
+        except ValueError:
+            allowed = False
+        if not allowed:
+            return jsonify(error='Invalid LMS file URL.'), 400
 
         # Create an authenticated LMS session directly via the scraper service.
         # This avoids going through _ensure_valid_session which raises
@@ -1602,34 +1601,30 @@ def download_file(file_url):
                 return jsonify(success=False, error='Lecture proxy unavailable. Refresh LMS and retry.'), 502
             # Fallback to the old memory stream method if the URL is dangerously long
             try:
-                import requests as req_lib
-                file_response = lms_session.get(file_url, stream=True, timeout=60)
-                file_response.raise_for_status()
-
-                content_type = file_response.headers.get('Content-Type', 'application/octet-stream')
-                content_disposition = file_response.headers.get(
-                    'Content-Disposition',
-                    f'attachment; filename="{file_url.split("/")[-1] or "download"}"'
+                file_response = lms_session.get(
+                    file_url, stream=True, timeout=60, allow_redirects=False
                 )
+                if not 200 <= file_response.status_code < 300:
+                    file_response.close()
+                    return jsonify(error='LMS file download failed.'), 502
+
+                filename = secure_filename(urllib.parse.unquote(target.path.rsplit('/', 1)[-1])) or 'download'
+                content_disposition = f'attachment; filename="{filename}"'
 
                 def generate():
-                    for chunk in file_response.iter_content(chunk_size=8192):
-                        if chunk:
-                            yield chunk
+                    yield from file_response.iter_content(chunk_size=8192)
 
                 response = Response(
                     generate(),
-                    mimetype=content_type,
-                    headers={'Content-Disposition': content_disposition}
+                    mimetype='application/octet-stream',
+                    headers={'Content-Disposition': content_disposition, 'X-Content-Type-Options': 'nosniff'}
                 )
+                response.call_on_close(file_response.close)
 
-                if file_response.headers.get('Content-Length'):
-                    response.headers['Content-Length'] = file_response.headers['Content-Length']
-
-                logger.info(f"Streaming file download (fallback) for account {account_id}: {file_url}")
+                logger.info("Streaming LMS download through the application fallback")
                 return response
             except Exception as stream_err:
-                logger.error(f"File stream error for account {account_id}: {stream_err}")
+                logger.warning("LMS file stream failed: %s", type(stream_err).__name__)
                 flash('File download failed. The file may no longer be available.', 'error')
                 return redirect(request.referrer or url_for('lms.assignment_monitor'))
 

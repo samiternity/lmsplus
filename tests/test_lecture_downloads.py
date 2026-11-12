@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace, ModuleType
 import unittest
+import urllib.parse
 from unittest.mock import patch
 from flask import Flask, jsonify, request
 
@@ -120,7 +121,7 @@ class EndpointTests(unittest.TestCase):
         tree = ast.parse(Path('app/routes/lms.py').read_text())
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'download_file')
         function.decorator_list = []
-        namespace = dict(request=request, jsonify=jsonify, logger=logging.getLogger(__name__),
+        namespace = dict(request=request, jsonify=jsonify, urllib=urllib, logger=logging.getLogger(__name__),
                          get_active_account_id=lambda:'account',
                          file_worker_origin=lambda:'https://proxy.example.test')
         exec(compile(ast.Module(body=[function], type_ignores=[]), '<individual endpoint>', 'exec'), namespace)

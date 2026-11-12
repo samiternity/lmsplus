@@ -13,7 +13,7 @@ Install Python 3.11 and Node.js 22. Run these commands from the repository root.
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -r requirements.txt pytest
+python -m pip install -r requirements-dev.txt
 npm ci
 cp .env.example .env.local
 cp .dev.vars.example .dev.vars

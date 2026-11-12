@@ -8,10 +8,9 @@ on:
 jobs:
   deploy-testing:
     name: Deploy to Testing Environment
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/public-release')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: testing
     permissions:
       contents: read
       id-token: write
@@ -113,13 +112,13 @@ jobs:
             LMS_MCP_RAM_DIR=/mcp-ram
             SECRET_KEY=${{ secrets.SECRET_KEY }}
             SCHEDULER_SECRET=${{ secrets.SCHEDULER_SECRET }}
-            DISCORD_CLIENT_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_CLIENT_ID || secrets.TESTING_DISCORD_CLIENT_ID }}
-            DISCORD_CLIENT_SECRET=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_CLIENT_SECRET || secrets.TESTING_DISCORD_CLIENT_SECRET }}
-            DISCORD_BOT_TOKEN=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_BOT_TOKEN || secrets.TESTING_DISCORD_BOT_TOKEN }}
-            DISCORD_PUBLIC_KEY=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_PUBLIC_KEY || secrets.TESTING_DISCORD_PUBLIC_KEY }}
-            DISCORD_GUILD_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_GUILD_ID || secrets.TESTING_DISCORD_GUILD_ID }}
-            DISCORD_LOG_WEBHOOK_URL=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_LOG_WEBHOOK_URL || secrets.TESTING_DISCORD_LOG_WEBHOOK_URL }}
-            DISCORD_AUTHORIZED_ROLE_ID=${{ github.ref == 'refs/heads/main' && secrets.DISCORD_AUTHORIZED_ROLE_ID || secrets.TESTING_DISCORD_AUTHORIZED_ROLE_ID }}
+            DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+            DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}
+            DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
+            DISCORD_PUBLIC_KEY=${{ secrets.DISCORD_PUBLIC_KEY }}
+            DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+            DISCORD_LOG_WEBHOOK_URL=${{ secrets.DISCORD_LOG_WEBHOOK_URL }}
+            DISCORD_AUTHORIZED_ROLE_ID=${{ secrets.DISCORD_AUTHORIZED_ROLE_ID }}
             DOWNLOAD_ENCRYPTION_KEY=${{ secrets.TESTING_DOWNLOAD_ENCRYPTION_KEY }}
             TURNSTILE_SITE_KEY=${{ secrets.TURNSTILE_SITE_KEY }}
             TURNSTILE_SECRET_KEY=${{ secrets.TURNSTILE_SECRET_KEY }}
