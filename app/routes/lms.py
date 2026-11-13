@@ -1,6 +1,7 @@
 # app/routes/lms.py
-from flask import Blueprint, render_template, session, flash, redirect, url_for, request, jsonify, Response, abort, copy_current_request_context
+from flask import Blueprint, render_template, session, flash, redirect, url_for, request, jsonify, Response, abort, copy_current_request_context, current_app
 from flask_login import login_required, current_user
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 import logging
 import os
@@ -14,6 +15,7 @@ import json
 
 from app.utils.proxy_transport import file_worker_origin, macro_endpoints, proxy_request
 from app.models.group_manager import GroupManager
+from app.models.account import User
 from app.services.lms_service import LMSService, LMSServiceError
 from app.services.lms_scraper_service import CMSSurveyRequiredError
 from app.services.lms_auth_service import LMSAuthenticationError, LMSSessionError
@@ -27,7 +29,6 @@ from app.utils.lms_notifications import (
 from app.utils.lms_logger import log_error, log_warning, log_info, log_debug, log_user_activity, log_security_event
 from app.utils.session_auth import is_account_authenticated, add_authenticated_account
 from app.utils.limiter import limiter
-from app.config import get_config
 
 
 # Configure logging
@@ -83,6 +84,8 @@ def require_lms_authentication(f):
             # when actual data is requested via API
             
             return f(*args, **kwargs)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error in LMS authentication check: {e}")
             if is_api:
@@ -248,7 +251,6 @@ def inject_lms_context():
     # Check kill switch status globally
     kill_switch_active = False
     try:
-        from flask import current_app
         scheduler = getattr(current_app, 'notification_scheduler', None)
         if scheduler:
             status = scheduler.get_kill_switch_status()
@@ -1590,48 +1592,48 @@ def download_file(file_url):
             cf_url = f"{worker}/download?token={token}"
             if len(cf_url) > 1900:
                 logger.warning("Download token exceeds redirect limit (%d chars).", len(cf_url))
-                raise ValueError("Token too long")
+                return jsonify(error="LMS download URL is too long."), 502
                 
             logger.info(f"Redirecting download to Cloudflare Edge for account {account_id}")
             return redirect(cf_url)
             
         except Exception as e:
-            if request.args.get('lecture') == '1':
-                # Lecture downloads never fall back to Google Cloud file transfer.
-                return jsonify(success=False, error='Lecture proxy unavailable. Refresh LMS and retry.'), 502
-            # Fallback to the old memory stream method if the URL is dangerously long
-            try:
-                file_response = lms_session.get(
-                    file_url, stream=True, timeout=60, allow_redirects=False
-                )
-                if not 200 <= file_response.status_code < 300:
-                    file_response.close()
-                    return jsonify(error='LMS file download failed.'), 502
-
-                filename = secure_filename(urllib.parse.unquote(target.path.rsplit('/', 1)[-1])) or 'download'
-                content_disposition = f'attachment; filename="{filename}"'
-
-                def generate():
-                    yield from file_response.iter_content(chunk_size=8192)
-
-                response = Response(
-                    generate(),
-                    mimetype='application/octet-stream',
-                    headers={'Content-Disposition': content_disposition, 'X-Content-Type-Options': 'nosniff'}
-                )
-                response.call_on_close(file_response.close)
-
-                logger.info("Streaming LMS download through the application fallback")
-                return response
-            except Exception as stream_err:
-                logger.warning("LMS file stream failed: %s", type(stream_err).__name__)
-                flash('File download failed. The file may no longer be available.', 'error')
-                return redirect(request.referrer or url_for('lms.assignment_monitor'))
+            if request.args.get('lecture') == '1' or len(file_url) > 1900:
+                return jsonify(success=False, error='LMS file proxy unavailable. Refresh LMS and retry.'), 502
+            return _bounded_download_fallback(lms_session, file_url, target.path)
 
     except Exception as e:
         logger.error(f"File download error for account {account_id}: {e}")
         flash('File download failed. Please try again.', 'error')
         return redirect(request.referrer or url_for('lms.assignment_monitor'))
+
+def _bounded_download_fallback(lms_session, file_url, path):
+    limit = 10 * 1024 * 1024
+    upstream = lms_session.get(file_url, stream=True, timeout=(5, 10), allow_redirects=False)
+    try:
+        if not 200 <= upstream.status_code < 300:
+            return jsonify(error='LMS file download failed.'), 502
+        length = upstream.headers.get('Content-Length')
+        if length is not None and (not length.isdecimal() or int(length) > limit):
+            return jsonify(error='LMS file exceeds the fallback download limit.'), 502
+
+        from time import monotonic
+
+        deadline = monotonic() + 20
+        content = bytearray()
+        for chunk in upstream.iter_content(chunk_size=65536):
+            if monotonic() >= deadline or len(content) + len(chunk) > limit:
+                return jsonify(error='LMS file exceeds the fallback download limit.'), 502
+            content.extend(chunk)
+
+        filename = secure_filename(urllib.parse.unquote(path.rsplit('/', 1)[-1])) or 'download'
+        return Response(bytes(content), mimetype='application/octet-stream', headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff'
+        })
+    finally:
+        upstream.close()
+
 
 @lms_bp.route('/upload/<assignment_id>', methods=['GET', 'POST'])
 @login_required
@@ -2828,6 +2830,10 @@ def upload_assignment():
     """
     API endpoint to upload assignment submission.
     """
+    test_upload = any(field in request.form for field in ('test_mode', 'group_enrollments', 'delete_existing'))
+    if test_upload and not current_app.config['TEST_GROUP_UPLOAD_ENABLED']:
+        abort(404)
+
     try:
         account_id = get_active_account_id()
         if not account_id:
@@ -2870,70 +2876,16 @@ def upload_assignment():
         offered_course_id = request.form.get('offered_course_id')
         student_id = request.form.get('student_id')
         
-        group_enrollments = request.form.get('group_enrollments')
-        delete_existing = request.form.get('delete_existing') == 'true'
-        
         # --- TEMP TEST FEATURE BEGIN ---
-        test_mode = request.form.get('test_mode')
-        if test_mode:
-            logger.info(f"[TEST UPLOAD] Initiated manual test upload for account {account_id}")
-            logger.info(f"[TEST UPLOAD] test_assignment_id: {assignment_id}")
-            
-            if group_enrollments and not get_config().is_production:
-                logger.info(f"[TEST UPLOAD] Detected Group Upload for: {group_enrollments}")
-                enrollment_list = [e.strip() for e in group_enrollments.split(',') if e.strip()]
-                
-                if enrollment_list:
-                    # Reset file pointer for group upload loop
-                    file.seek(0)
-                    file_content = file.read()
-                    
-                    try:
-                        results = lms_service.handle_group_test_upload(
-                            active_account_id=account_id,
-                            active_student_id=student_id,
-                            group_enrollments=enrollment_list,
-                            assignment_no=int(assignment_no),
-                            file_content=file_content,
-                            filename=file.filename,
-                            content_type=file.content_type,
-                            semester=semester,
-                            course=course,
-                            assignment_id=assignment_id,
-                            offered_course_id=offered_course_id,
-                            delete_existing=delete_existing
-                        )
-                        
-                        # Now process the active user's upload
-                        file.seek(0)
-                        active_result = {'enrollment': 'Your Account', 'status': 'failed', 'message': ''}
-                        try:
-                            lms_service.upload_assignment_submission(
-                                account_id=account_id,
-                                assignment_no=int(assignment_no),
-                                file=file,
-                                semester=semester,
-                                course=course,
-                                assignment_id=assignment_id,
-                                offered_course_id=offered_course_id,
-                                student_id=student_id
-                            )
-                            active_result['status'] = 'success'
-                        except Exception as e:
-                            active_result['message'] = str(e)
-                            
-                        results.insert(0, active_result)
-                        
-                        return jsonify({
-                            'success': True,
-                            'message': 'Group test upload finished',
-                            'results': results
-                        })
-                    except Exception as e:
-                        logger.error(f"Error in handle_group_test_upload: {e}", exc_info=True)
-                        return jsonify({'success': False, 'error': str(e)}), 500
+        if test_upload:
+            enrollments = {value.strip().lower() for value in
+                           request.form.get('group_enrollments', '').split(',') if value.strip()}
+            return _submit_group_operation(
+                request.form, file=file, enrollments=enrollments,
+                replace=request.form.get('delete_existing') == 'true', test_mode=True
+            )
         # --- TEMP TEST FEATURE END ---
-        
+
         logger.info(f"Uploading assignment {assignment_no} for account {account_id}")
         logger.info(f"Upload params - assignment_id: {assignment_id}, offered_course_id: {offered_course_id}")
         
@@ -2952,7 +2904,7 @@ def upload_assignment():
             
             if success:
                 # --- TEMP TEST FEATURE BEGIN ---
-                if test_mode:
+                if test_upload:
                     logger.info(f"[TEST UPLOAD] SUCCESS! LMS ACCEPTED the test upload for assignment_id {assignment_id}.")
                 # --- TEMP TEST FEATURE END ---
                 logger.info(f"Successfully uploaded assignment {assignment_no}")
@@ -2965,7 +2917,7 @@ def upload_assignment():
                 })
             else:
                 # --- TEMP TEST FEATURE BEGIN ---
-                if test_mode:
+                if test_upload:
                     logger.warning(f"[TEST UPLOAD] FAILED. LMS REJECTED the test upload for assignment_id {assignment_id}.")
                 # --- TEMP TEST FEATURE END ---
                 logger.warning(f"Failed to upload assignment {assignment_no}")
@@ -3205,8 +3157,7 @@ def download_lecture_notes_zip():
 
 def _groups_disabled():
     """Return 404 when group feature is disabled in production."""
-    from app.config import get_config
-    if get_config().is_production:
+    if current_app.config['IS_PRODUCTION']:
         abort(404)
 
 @lms_bp.route('/groups', methods=['GET'])
@@ -3246,37 +3197,32 @@ def create_group():
     if not creator_enrollment:
         return jsonify({'success': False, 'error': 'No active account found'})
         
-    data = request.json
+    from app.routes.auth import ALLOWED_ENROLLMENT_REGEX
+    from app.services.testing_access import testing_login_allowed
+
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='Expected a JSON object'), 400
     assignment_id = data.get('assignment_id')
     course_id = data.get('course_id')
     partner_enrollments = data.get('partners', [])
-    
-    if not assignment_id or not course_id:
-        return jsonify({'success': False, 'error': 'Missing assignment or course details'})
-        
-    if not partner_enrollments:
-        return jsonify({'success': False, 'error': 'No partners provided'})
-        
-    # Validate partners exist
-    from app.models.account import AccountManager
-    account_mgr = AccountManager()
-    users_data = account_mgr.load_users()
-    
-    registered_enrollments = set()
-    for uid, udata in users_data.items():
-        acc_dict = udata.get('cms_account', {})
-        enr = acc_dict.get('cms_username', '').strip().lower()
-        if enr:
-            registered_enrollments.add(enr)
-            
+
+    if not all(isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9+/=_-]{1,128}', value)
+               for value in (assignment_id, course_id)):
+        return jsonify({'success': False, 'error': 'Invalid assignment or course details'}), 400
+
+    if (not isinstance(partner_enrollments, list) or not 1 <= len(partner_enrollments) <= 10
+            or any(not isinstance(value, str) or not ALLOWED_ENROLLMENT_REGEX.fullmatch(value.strip())
+                   for value in partner_enrollments)):
+        return jsonify({'success': False, 'error': 'Invalid partners'}), 400
+
     for partner in partner_enrollments:
-        p_clean = partner.strip().lower()
-        if p_clean and p_clean not in registered_enrollments:
-            return jsonify({
-                'success': False, 
-                'error': f'User {partner.strip()} is not yet registered on the website.'
-            })
-            
+        enrollment = partner.strip()
+        user = User.get(enrollment)
+        if (not testing_login_allowed(enrollment) or not user or not user.cms_account
+                or user.cms_account.cms_username != enrollment):
+            return jsonify({'success': False, 'error': 'A partner is unavailable'}), 400
+
     # All partners exist, create group
     group_id = group_manager.create_group(
         assignment_id=assignment_id,
@@ -3296,6 +3242,8 @@ def respond_group_invite(group_id):
     active_account = current_user.get_active_account()
     enrollment = active_account.cms_username if active_account else None
     
+    if not enrollment:
+        abort(403)
     data = request.json
     action = data.get('action') # 'accept' or 'decline'
     
@@ -3306,6 +3254,8 @@ def respond_group_invite(group_id):
     if not group:
         return jsonify({'success': False, 'error': 'Group not found'})
         
+    if enrollment.strip().lower() not in group.get('roster', {}):
+        abort(403)
     logs = group_manager.load_audit_logs().get(group_id, [])
     has_uploaded = any('Upload' in log['action'] for log in logs)
         
@@ -3351,7 +3301,7 @@ def get_my_group_invites():
     for g in user_groups:
         roster = g.get('roster', {})
         my_status = roster.get(enrollment.lower(), 'Unknown')
-        owner = next((enr for enr, status in roster.items() if status == 'Accepted'), 'Unknown') # Crude approximation since owner is always accepted first
+        owner = group_manager.get_owner(g) or 'Unknown'
         
         # We don't have assignment title explicitly saved in groups.json, but we can pass assignment_id
         formatted_groups.append({
@@ -3373,6 +3323,10 @@ def get_my_group_invites():
 def get_group_logs(group_id):
     """Get audit logs for a group"""
     _groups_disabled()
+    group = group_manager.get_group(group_id)
+    active = current_user.get_active_account()
+    if not group or not active or group.get('roster', {}).get(active.cms_username.strip().lower()) != 'Accepted':
+        abort(403)
     logs = group_manager.load_audit_logs()
     group_logs = logs.get(group_id, [])
     return jsonify({'success': True, 'logs': group_logs})
@@ -3392,8 +3346,8 @@ def get_assignment_group_logs():
     assignment_id = request.args.get('assignment_id')
     course_id = request.args.get('course_id')
     
-    group = group_manager.get_group_by_assignment_and_owner(assignment_id, enrollment)
-    if not group:
+    group = group_manager.get_group_by_assignment_and_owner(assignment_id, course_id, enrollment)
+    if not group or group.get('roster', {}).get(enrollment.strip().lower()) != 'Accepted':
         return jsonify({'success': True, 'logs': [], 'message': 'No group found for this assignment'})
         
     group_id = group['group_id']
@@ -3405,98 +3359,68 @@ def get_assignment_group_logs():
     
     return jsonify({'success': True, 'logs': group_logs, 'partners': partners, 'state': group.get('state'), 'group_id': group_id})
 
+def _submit_group_operation(data, *, file=None, enrollments=None, replace=False, test_mode=False):
+    active = current_user.get_active_account()
+    group_id = data.get('group_id')
+    semester = data.get('semester')
+    if not active:
+        return jsonify(success=False, error='No active account found'), 403
+    if file is not None and (not file.filename or
+            file.filename.rpartition('.')[2].lower() not in {'pdf', 'doc', 'docx', 'zip', 'rar', 'txt'}):
+        return jsonify(success=False, error='Invalid assignment file type'), 400
+    if not isinstance(group_id, str) or not group_id or not isinstance(semester, str) or not semester:
+        return jsonify(success=False, error='Group and semester are required'), 400
+
+    try:
+        group = group_manager.start_operation(
+            group_id, active.cms_username.strip().lower(),
+            'uploading' if file is not None else 'deleting', enrollments
+        )
+    except ValueError as exc:
+        return jsonify(success=False, error=str(exc)), 409
+    if not group:
+        return jsonify(success=False, error='Not authorized for this group'), 403
+
+    if file is None:
+        upload = None
+    else:
+        try:
+            upload = (file.read(ASSIGNMENT_UPLOAD_MAX_SIZE + 1), file.filename, file.content_type)
+        except Exception:
+            group_manager.set_group_state(group_id, 'idle')
+            raise
+        if len(upload[0]) > ASSIGNMENT_UPLOAD_MAX_SIZE:
+            group_manager.set_group_state(group_id, 'idle')
+            return jsonify(success=False, error='File size must be 15MB or less'), 400
+
+    if test_mode:
+        results = lms_service.handle_group_test_upload(group_manager, group, semester, upload, enrollments, replace)
+        return jsonify(success=all(result['status'] == 'success' for result in results),
+                       message='Group test upload finished', results=results)
+
+    lms_service.start_group_operation(group_manager, group, semester, upload)
+    return jsonify(success=True, message='Group upload started' if upload else 'Group delete started')
+
+
 @lms_bp.route('/api/groups/upload', methods=['POST'])
 @login_required
 @require_lms_authentication
 def upload_group_assignment():
-    """Upload assignment for a group"""
+    """Upload the group's assignment for accepted members."""
     _groups_disabled()
-    active_account = current_user.get_active_account()
-    if not active_account:
-        return jsonify({'success': False, 'error': 'No active account found'})
-        
     file = request.files.get('file')
     if not file:
-        return jsonify({'success': False, 'error': 'No file provided'})
-    file.seek(0, 2)
-    file_size = file.tell()
-    file.seek(0)
-    if file_size > ASSIGNMENT_UPLOAD_MAX_SIZE:
-        return jsonify({'success': False, 'error': 'File size must be 15MB or less'}), 400
-        
-    group_id = request.form.get('group_id')
-    assignment_no = request.form.get('assignment_no')
-    semester = request.form.get('semester')
-    course = request.form.get('course')
-    assignment_id = request.form.get('assignment_id')
-    offered_course_id = request.form.get('offered_course_id')
-    
-    if not group_id or not assignment_no or not semester or not course:
-        return jsonify({'success': False, 'error': 'Missing required parameters'})
-        
-    try:
-        assignment_no = int(assignment_no)
-    except ValueError:
-        return jsonify({'success': False, 'error': 'Invalid assignment number'})
+        return jsonify(success=False, error='No file provided'), 400
+    return _submit_group_operation(request.form, file=file)
 
-    file_data = file.read()
-    filename = file.filename
-    content_type = file.content_type
-    
-    from app.models.account import AccountManager
-    account_mgr = AccountManager()
-    
-    lms_service.group_upload_assignment(
-        group_manager=group_manager,
-        account_manager=account_mgr,
-        group_id=group_id,
-        file_data=file_data,
-        filename=filename,
-        content_type=content_type,
-        semester=semester,
-        course=course,
-        assignment_no=assignment_no,
-        assignment_id=assignment_id,
-        offered_course_id=offered_course_id
-    )
-    
-    return jsonify({'success': True, 'message': 'Group upload started'})
 
 @lms_bp.route('/api/groups/delete', methods=['POST'])
 @login_required
 @require_lms_authentication
 def delete_group_assignment():
-    """Delete assignment for a group"""
+    """Delete the group's assignment for accepted members."""
     _groups_disabled()
-    active_account = current_user.get_active_account()
-    if not active_account:
-        return jsonify({'success': False, 'error': 'No active account found'})
-        
-    data = request.json
-    group_id = data.get('group_id')
-    assignment_no = data.get('assignment_no')
-    semester = data.get('semester')
-    course = data.get('course')
-    submission_id = data.get('submission_id')
-    assignment_id = data.get('assignment_id')
-    offered_course_id = data.get('offered_course_id')
-    
-    if not group_id or not assignment_no or not semester or not course:
-        return jsonify({'success': False, 'error': 'Missing required parameters'})
-        
-    from app.models.account import AccountManager
-    account_mgr = AccountManager()
-    
-    lms_service.group_delete_assignment(
-        group_manager=group_manager,
-        account_manager=account_mgr,
-        group_id=group_id,
-        semester=semester,
-        course=course,
-        assignment_no=assignment_no,
-        submission_id=submission_id,
-        assignment_id=assignment_id,
-        offered_course_id=offered_course_id
-    )
-    
-    return jsonify({'success': True, 'message': 'Group delete started'})
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='Expected a JSON object'), 400
+    return _submit_group_operation(data)

@@ -1,10 +1,15 @@
 """SDK OAuth provider backed by revocable account-bound Firestore records."""
 
 import asyncio
+from base64 import urlsafe_b64encode
+from datetime import datetime, timezone
 import hmac
+import json
 import logging
 import time
 from urllib.parse import urlencode
+
+from cryptography.fernet import Fernet, InvalidToken
 
 from authlib.common.security import generate_token
 from authlib.common.urls import add_params_to_uri
@@ -18,6 +23,7 @@ from lms_mcp.core import (
     ANTIGRAVITY_CALLBACK, ANTIGRAVITY_CLIENT_ID, PROVIDER_LABELS, ConnectorError, SCOPE,
     callback_provider,
 )
+from lms_mcp.http_security import registration_source
 from lms_mcp.store import digest
 
 logger = logging.getLogger(__name__)
@@ -27,6 +33,8 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
     def __init__(self, settings, store, owns_account, on_connected=None):
         self.settings, self.store, self.owns_account = settings, store, owns_account
         self.on_connected = on_connected
+        # Derive a separate key for short-lived browser consent requests.
+        self.consent_cipher = Fernet(urlsafe_b64encode(hmac.digest(settings.key, b'mcp-consent-v1', 'sha256')))
 
     async def get_client(self, client_id):
         if client_id == ANTIGRAVITY_CLIENT_ID:
@@ -45,15 +53,21 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
             raise RegistrationError('invalid_client_metadata', 'Use a supported public client with read-only assignment access.')
         client_info.client_secret = None
         # Registration is bounded independently from student account grants.
-        quota_key = 'mcp_limits/registration-' + time.strftime('%Y-%m-%d', time.gmtime())
+        day = time.strftime('%Y-%m-%d', time.gmtime())
+        quota_key = 'mcp_limits/registration-' + day
+        source_key = 'mcp_limits/registration-source-' + digest(day + ':' + registration_source.get())
         client_key = 'mcp_clients/' + digest(client_info.client_id)
+
         def register(docs):
             quota = docs[quota_key] or {'count': 0}
-            if quota['count'] >= 200:
+            source = docs[source_key] or {'count': 0}
+            if source['count'] >= 5 or quota['count'] >= 200:
                 raise RegistrationError('invalid_client_metadata', 'Client registration is temporarily unavailable.')
             quota['count'] += 1
-            return {quota_key: quota, client_key: client_info.model_dump(mode='json')}, None
-        await asyncio.to_thread(self.store.run, [quota_key, client_key], register)
+            source['count'] += 1
+            return {quota_key: quota, source_key: source, client_key: client_info.model_dump(mode='json')}, None
+
+        await asyncio.to_thread(self.store.run, [quota_key, source_key, client_key], register)
 
     async def authorize(self, client, params: AuthorizationParams):
         if (params.resource not in (None, self.settings.resource)
@@ -65,30 +79,34 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
         if not self.settings.allows_callback(callback, pinned=client.client_id == ANTIGRAVITY_CLIENT_ID):
             raise AuthorizeError('unauthorized_client', 'This app is not enabled for LMS+.')
         provider = callback_provider(callback)
-        request_id = generate_token(48)
-        await asyncio.to_thread(self.store.put, 'mcp_authorizations/' + digest(request_id), {
+        request = {
             'params': params.model_dump(mode='json'), 'client_id': client.client_id,
-            'client_name': PROVIDER_LABELS[provider],
-            'expires': time.time() + 300,
-        })
+            'client_name': PROVIDER_LABELS[provider], 'expires': time.time() + 300,
+        }
+        request_id = self.consent_cipher.encrypt(json.dumps(request).encode()).decode()
+        if len(request_id) > 2400:
+            raise AuthorizeError('invalid_request', 'Authorization request is too large.')
         return self.settings.origin + '/connector/authorize?' + urlencode({'request': request_id})
 
     def authorization(self, request_id):
-        if not isinstance(request_id, str) or len(request_id) > 128:
+        if not isinstance(request_id, str) or len(request_id) > 2400:
             return None
-        record = self.store.get('mcp_authorizations/' + digest(request_id))
-        return record if record and record['expires'] > time.time() else None
+        try:
+            record = json.loads(self.consent_cipher.decrypt(request_id.encode(), ttl=300))
+        except (InvalidToken, ValueError):
+            return None
+        return record if record['expires'] > time.time() else None
 
     def approve(self, request_id, user_id, account_id):
         self.settings.check_account(account_id)
         if not self.owns_account(user_id, account_id):
             raise ConnectorError('connection_unavailable', 'This university account is unavailable.')
         code, connection_id = generate_token(48), generate_token(32)
-        pending_key = 'mcp_authorizations/' + digest(request_id)
+        pending_key = 'mcp_consent_used/' + digest(request_id)
+        request = self.authorization(request_id)
         code_key, connection_key = 'mcp_codes/' + digest(code), 'mcp_connections/' + connection_id
         def grant(docs):
-            request = docs[pending_key]
-            if not request or request['expires'] <= time.time():
+            if docs[pending_key] or not request or request['expires'] <= time.time():
                 raise ConnectorError('connection_unavailable', 'The connection request expired. Start again in your AI app.')
             params = request['params']
             if not self.settings.allows_callback(params['redirect_uri'], pinned=request['client_id'] == ANTIGRAVITY_CLIENT_ID):
@@ -101,21 +119,27 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
                           'client_name': request['client_name'], 'created': time.time(), 'revoked': False,
                           'provider': callback_provider(params['redirect_uri']),
                           'access_hash': None, 'refresh_hash': None, 'resource': self.settings.resource}
-            changes = {pending_key: None, code_key: code_record, connection_key: connection}
+            changes = {pending_key: {'expires_at': datetime.fromtimestamp(request['expires'], timezone.utc)}, code_key: code_record, connection_key: connection}
             redirect = add_params_to_uri(params['redirect_uri'], [(key, value) for key, value in {
                 'code': code, 'state': params.get('state'), 'iss': self.settings.origin}.items() if value is not None])
             return changes, redirect
         return self.store.run([pending_key, code_key, connection_key], grant)
 
     def deny(self, request_id):
-        key = 'mcp_authorizations/' + digest(request_id)
+        request = self.authorization(request_id)
+        if not request:
+            raise ConnectorError('connection_unavailable', 'The connection request expired.')
+        key = 'mcp_consent_used/' + digest(request_id)
+
         def deny_request(docs):
-            request = docs[key]
-            if not request or request['expires'] <= time.time():
+            if docs[key] or request['expires'] <= time.time():
                 raise ConnectorError('connection_unavailable', 'The connection request expired.')
             params = request['params']
-            return {key: None}, add_params_to_uri(params['redirect_uri'], [(key, value) for key, value in {
-                'error': 'access_denied', 'state': params.get('state'), 'iss': self.settings.origin}.items() if value is not None])
+            return {key: {'expires_at': datetime.fromtimestamp(request['expires'], timezone.utc)}}, add_params_to_uri(
+                params['redirect_uri'], [(k, v) for k, v in {
+                    'error': 'access_denied', 'state': params.get('state'), 'iss': self.settings.origin
+                }.items() if v is not None]
+            )
         return self.store.run([key], deny_request)
 
     def _check_connection(self, connection):

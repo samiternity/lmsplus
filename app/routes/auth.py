@@ -1,14 +1,17 @@
 from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models.account import User, CMSAccount, account_manager
+from app.models.account import User, account_manager
 from app.utils.enhanced_scraper import scraper_manager
 from app.utils.data_manager import data_manager
 from app.utils.session_auth import add_authenticated_account, init_authenticated_accounts, is_account_authenticated, clear_authenticated_accounts
 from app.utils.turnstile import verify_turnstile
-from app.utils.limiter import limiter, get_rate_limit_key
-import threading
+from app.utils.limiter import limiter
+from app.services.cms_blacklist import get_blacklist_service
+from app.services.testing_access import testing_login_allowed
 import logging
+import os
 import re
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +135,13 @@ def _resume_connector_consent(fallback):
     return fallback
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute", key_func=lambda: request.form.get("username") or get_rate_limit_key())
-@limiter.limit("30 per minute")
+@limiter.limit("5 per minute; 30 per hour", methods=["POST"])
 def login():
+    if request.method == 'POST':
+        enrollment = request.form.get('username', '').strip()
+        if enrollment and not testing_login_allowed(enrollment):
+            return jsonify({'error': 'This enrollment is not allowed on the testing server.'}), 403
+
     # Already authenticated — just redirect
     if current_user.is_authenticated:
         target = _resume_connector_consent(url_for('main.dashboard'))
@@ -156,6 +163,10 @@ def login():
         if not ALLOWED_ENROLLMENT_REGEX.match(username):
             return jsonify({'error': 'Invalid enrollment format. Must follow Bahria format: XX-XXXXXX-XXX (prefix 01-15).'}), 400
 
+        is_allowed, reason = get_blacklist_service().check_access(username)
+        if not is_allowed:
+            return jsonify({'error': reason}), 403
+
         if current_app.config['APP_ENV'] == 'local':
             from app.utils.proxy_transport import proxy_workers
             if not proxy_workers():
@@ -163,51 +174,11 @@ def login():
 
         # Turnstile verification
         turnstile_token = request.form.get('cf-turnstile-response')
-        client_ip = request.headers.get('CF-Connecting-IP') or request.remote_addr
+        client_ip = request.remote_addr
         if not verify_turnstile(turnstile_token, remote_ip=client_ip, action='login'):
             return jsonify({'error': 'Security verification failed. Please refresh and try again.'}), 400
 
-        user_obj = User.get(username)
-
-        if user_obj and user_obj.check_password(password):
-            # User exists and password matches
-            # ALWAYS update CMS password to ensure it's current
-            if user_obj.cms_account:
-                # Update the CMS password in case it changed
-                user_obj.cms_account.cms_password = password
-                user_obj.save()
-            
-            # Always remember — session survives browser restarts
-            login_user(user_obj, remember=True)
-            session.permanent = True  # ensure 30-day Max-Age is set on __session cookie
-
-            # SINGLE ACCOUNT MODE: Set account ID in session
-            if user_obj.cms_account and user_obj.account_id:
-                session['account_id'] = user_obj.account_id
-                session['cms_username'] = user_obj.cms_account.cms_username
-                # Mark account as authenticated for LMS access
-                add_authenticated_account(user_obj.account_id)
-            
-            # MULTI-ACCOUNT MODE (disabled)
-            # # Initialize session-based account tracking
-            # init_authenticated_accounts()
-            #
-            # # Restore the last-used active account into the session
-            # if user_obj.active_account_id and user_obj.active_account_id in user_obj.cms_accounts:
-            #     acc = user_obj.cms_accounts[user_obj.active_account_id]
-            #     _set_active_account_in_session(user_obj.active_account_id, acc.cms_username)
-            #     # Add to authenticated accounts list
-            account_id = user_obj.account_id
-            if not user_obj.cms_account:
-                redirect_target = url_for('main.dashboard')
-            else:
-                existing_profile = data_manager.load_account_data(account_id, 'profile') if account_id else None
-                if not existing_profile or existing_profile.get('sync_failed'):
-                    redirect_target = url_for('main.sync_screen')
-                else:
-                    redirect_target = url_for('main.dashboard')
-
-            return jsonify({'success': True, 'redirect_url': _resume_connector_consent(redirect_target)})
+        user_obj = User.get(username, fresh=True) if os.environ.get("K_SERVICE") else User.get(username)
 
         # New user or first-time CMS login
         if not user_obj:
@@ -220,29 +191,14 @@ def login():
                     }
                 }), 403
 
-        # Check blacklist before attempting authentication
-        from app.services.cms_blacklist import get_blacklist_service
-        blacklist_service = get_blacklist_service()
-        is_allowed, reason = blacklist_service.check_access(username)
-        if not is_allowed:
-            logger.warning(f"Login attempt blocked for blacklisted user: {username}")
-            return jsonify({'error': reason}), 403
-
         # Step 1: Attempt Single-Flight Atomic Edge Verification & Scrape
         target_institute = get_institute_id_for_enrollment(
             username,
             fallback=(getattr(user_obj.cms_account, 'institute_id', None) if user_obj and getattr(user_obj, 'cms_account', None) else None) or request.form.get('institute_id') or '2'
         )
 
-        temp_account = CMSAccount(
-            account_id='temp_auth',
-            cms_username=username,
-            cms_password=password,
-            institute_id=target_institute
-        )
-        scraper = scraper_manager.get_scraper(temp_account)
-        atomic_bundle = scraper.scrape_full_sync_atomic(username, password, institute_id=target_institute)
-        scraper_manager.cleanup_scraper('temp_auth')
+        with scraper_manager.credential_scraper(username, password, target_institute) as scraper:
+            atomic_bundle = scraper.scrape_full_sync_atomic(username, password, institute_id=target_institute)
 
         cms_auth_result = None
         if atomic_bundle and atomic_bundle.get('cms_down'):
@@ -265,7 +221,7 @@ def login():
             cms_auth_result = True
         else:
             logger.warning(f"Atomic macro inconclusive for {username}, falling back to standard login")
-            cms_auth_result = authenticate_with_cms(username, password, user_obj=user_obj, institute_id=target_institute)
+            cms_auth_result = authenticate_with_cms(username, password, institute_id=target_institute)
 
         is_new_user = False
 
@@ -279,21 +235,37 @@ def login():
                 )
                 if not user_obj:
                     return jsonify({'error': 'Failed to create user account.'}), 500
-            else:
+            # Keep the existing account and preferences on ordinary sign-ins.
+            account = user_obj.cms_account
+            credentials_changed = not user_obj.check_password(password) or (
+                account is not None and account.cms_password != password
+            )
+            if credentials_changed:
                 from werkzeug.security import generate_password_hash
                 user_obj.password_hash = generate_password_hash(password)
+                user_obj.session_version = uuid4().hex
 
-            # SINGLE ACCOUNT MODE: Set the single CMS account
-            account_uuid = user_obj.set_cms_account(
-                cms_username=username,
-                cms_password=password,
-                institute_id=target_institute
-            )
-            
+            if account and account.cms_username == username:
+                account.cms_password = password
+                account.institute_id = target_institute
+                account_uuid = account.account_id
+            else:
+                account_uuid = user_obj.set_cms_account(
+                    cms_username=username,
+                    cms_password=password,
+                    institute_id=target_institute
+                )
+
+            if not user_obj.session_version:
+                user_obj.session_version = uuid4().hex
+
             # Save user with CMS account BEFORE logging in
             if not user_obj.save():
                 return jsonify({'error': 'Failed to save CMS account.'}), 500
-            
+
+            if credentials_changed:
+                scraper_manager.cleanup_scraper(account_uuid)
+
             # Handle bundle ingestion and background scraping
             extracted_profile = None
             if atomic_bundle and atomic_bundle.get('success') and atomic_bundle.get('html'):
@@ -338,8 +310,19 @@ def login():
                 _fire_signup_webhook(user_obj, profile_data=extracted_profile)
             
             # Log in the user
-            login_user(user_obj, remember=True)
+            login_user(user_obj)
+            session['auth_version'] = user_obj.session_version
             session.permanent = True  # ensure 30-day Max-Age is set on __session cookie
+
+            # MULTI-ACCOUNT MODE (disabled)
+            # # Initialize session-based account tracking
+            # init_authenticated_accounts()
+            #
+            # # Restore the last-used active account into the session
+            # if user_obj.active_account_id and user_obj.active_account_id in user_obj.cms_accounts:
+            #     acc = user_obj.cms_accounts[user_obj.active_account_id]
+            #     _set_active_account_in_session(user_obj.active_account_id, acc.cms_username)
+            #     # Add to authenticated accounts list
 
             # SINGLE ACCOUNT MODE: Set account ID in session
             session['account_id'] = account_uuid
@@ -650,21 +633,6 @@ def remove_account():
 # Migration helpers (unchanged)
 # ---------------------------------------------------------------------------
 
-@auth_bp.route('/migrate_data', methods=['POST'])
-@login_required
-def migrate_data():
-    try:
-        from app.utils.migration import migration_manager
-        success, log = migration_manager.run_full_migration()
-        return jsonify({
-            'success': success,
-            'message': 'Migration completed' if success else 'Migration failed',
-            'log': log
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Migration error: {str(e)}', 'log': []}), 500
-
-
 @auth_bp.route('/check_migration')
 @login_required
 def check_migration():
@@ -689,62 +657,21 @@ def check_migration():
 # CMS authentication helper
 # ---------------------------------------------------------------------------
 
-def authenticate_with_cms(cms_username, cms_password, user_obj=None, institute_id=None):
-    """Authenticate against Bahria University CMS."""
-    from app.services.cms_blacklist import get_blacklist_service
-    import logging
-    logger = logging.getLogger(__name__)
-
-    if not institute_id or (str(institute_id).strip() == '2' and cms_username and not str(cms_username).strip().startswith('02-')):
-        institute_id = get_institute_id_for_enrollment(cms_username)
-
-    blacklist_service = get_blacklist_service()
-    is_allowed, reason = blacklist_service.check_access(cms_username)
+def authenticate_with_cms(cms_username, cms_password, institute_id=None):
+    """Verify the submitted credentials with Bahria University CMS."""
+    institute_id = get_institute_id_for_enrollment(cms_username, fallback=institute_id or '2')
+    if not testing_login_allowed(cms_username):
+        return 'This enrollment is not allowed on the testing server.'
+    is_allowed, reason = get_blacklist_service().check_access(cms_username)
     if not is_allowed:
-        logger.warning(f"Login attempt blocked for blacklisted user: {cms_username}")
         return reason
 
     try:
-        logger.debug(f"Attempting to authenticate CMS user: {cms_username}")
-        temp_account = CMSAccount(
-            account_id='temp_auth',
-            cms_username=cms_username,
-            cms_password=cms_password,
-            institute_id=institute_id
-        )
-        scraper = scraper_manager.get_scraper(temp_account)
-        login_result = scraper.login(cms_username, cms_password)
-        is_cms_down = getattr(scraper, 'cms_down', False) or (login_result == "CMS_DOWN")
-        is_session_lost = getattr(scraper, 'session_lost', False) or (login_result == "SESSION_LOST")
-        logger.debug(f"CMS login result for {cms_username}: {login_result}, cms_down: {is_cms_down}, session_lost: {is_session_lost}")
-
-        scraper_manager.cleanup_scraper('temp_auth')
-
-        if login_result is True:
-            return True
-        elif is_cms_down:
-            return "CMS_DOWN"
-        elif is_session_lost:
-            return "SESSION_LOST"
-        else:
-            return False
-
-    except Exception as e:
-        logger.warning(f"Error authenticating with CMS for {cms_username}: {e}")
-
-        # Offline fallback — check stored password hash
-        if user_obj:
-            if getattr(user_obj, 'cms_password', None) == cms_password:
-                logger.warning(f"[OFFLINE LOGIN] Using stored credentials for {cms_username}")
-                return True
-        else:
-            stored_user = User.get(cms_username)
-            if stored_user and stored_user.password_hash:
-                from werkzeug.security import check_password_hash
-                if check_password_hash(stored_user.password_hash, cms_password):
-                    logger.debug(f"[OFFLINE LOGIN] Authenticated via synced hash for {cms_username}")
-                    return True
-
-        import traceback
-        traceback.print_exc()
-        return False
+        with scraper_manager.credential_scraper(cms_username, cms_password, institute_id) as scraper:
+            result = scraper.login(cms_username, cms_password, force=True)
+            if result is False and scraper.cms_down:
+                return 'CMS_DOWN'
+            return result
+    except Exception:
+        logger.warning("CMS credential verification unavailable", exc_info=True)
+        return "CMS_DOWN"

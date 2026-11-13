@@ -432,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const titleCell = document.createElement('td');
         titleCell.className = 'px-4 py-3 font-medium text-start';
         
-        let titleHtml = assignment.title;
+        let titleHtml = escapeHtml(assignment.title || '');
         if (isPotentialGroup && typeof GROUPS_ENABLED !== 'undefined' && GROUPS_ENABLED) {
             titleHtml += ' <i class="fas fa-users text-primary ms-2" title="Group Assignment" style="font-size: 0.875em; opacity: 0.8;"></i>';
         }
@@ -812,21 +812,21 @@ document.addEventListener('DOMContentLoaded', function () {
         return row;
     }
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     function showUploadModal(assignment) {
         // Store assignment data for upload function
         window.currentUploadAssignment = assignment;
 
         const isProduction = (typeof IS_PRODUCTION !== 'undefined' && IS_PRODUCTION === true);
         
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
-
         const safeTitle = (assignment && assignment.title)
             ? escapeHtml(assignment.title)
             : 'Untitled Assignment';
@@ -1143,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             </div>
                             <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-weight: 600; font-size: 1.125rem;">Confirm Deletion</h4>
                             <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9375rem;">Are you sure you want to delete the submission for:</p>
-                            <p style="margin: 0; color: var(--text-primary); font-weight: 600; font-size: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--border-radius); border-left: 4px solid var(--error-color);">${assignment.title}</p>
+                            <p style="margin: 0; color: var(--text-primary); font-weight: 600; font-size: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--border-radius); border-left: 4px solid var(--error-color);">${escapeHtml(assignment.title)}</p>
                             <p style="margin: 1rem 0 0 0; color: var(--text-muted); font-size: 0.8125rem;"><i class="fa fa-info-circle"></i> This action cannot be undone.</p>
                         </div>
                     </div>
@@ -1502,7 +1502,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <div id="tab-submission" style="display: block;">
                             <div style="margin-bottom: 1.25rem;">
                                 <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary); font-size: 0.875rem;">Assignment Title</label>
-                                <input type="text" value="${assignment.title}" disabled style="display: block; width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.875rem;">
+                                <input type="text" value="${escapeHtml(assignment.title)}" disabled style="display: block; width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.875rem;">
                             </div>
                             <div style="margin-bottom: 1.25rem;">
                                 <label for="groupEnrollments" style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary); font-size: 0.875rem;">
@@ -1612,8 +1612,8 @@ document.addEventListener('DOMContentLoaded', function () {
                             
                             tr.innerHTML = `
                                 <td><small>${dateStr}<br/>${timeStr}</small></td>
-                                <td>${log.actor}</td>
-                                <td>${log.action}<br/><small class="text-muted">${log.sync_status}</small></td>
+                                <td>${escapeHtml(log.actor)}</td>
+                                <td>${escapeHtml(log.action)}<br/><small class="text-muted">${escapeHtml(log.sync_status)}</small></td>
                                 <td>${statusBadge}</td>
                             `;
                             tbody.appendChild(tr);

@@ -53,3 +53,5 @@ deployment.txt
 blacklist.txt
 skills-lock.json
 docs/SECURITY_VULNERABILITY_REPORT.md
+
+testing-login-allowlist.txt

@@ -54,7 +54,7 @@ def checked_archive(data):
                     if (local in {'oleObject', 'externalData', 'altChunk', 'object', 'object-ole',
                                   'dde-source', 'dde-connection', 'script', 'iframe'}):
                         raise RenderingRequired('Active or externally linked Office content is unsupported')
-                    if local == 'Relationship' and node.get('TargetMode') == 'External' and not node.get('Type', '').endswith('/hyperlink'):
+                    if local == 'Relationship' and node.get('TargetMode') == 'External':
                         raise RenderingRequired('Externally linked document content is unsupported')
                     if local in {'image', 'img', 'use'}:
                         for key, value in node.attrib.items():

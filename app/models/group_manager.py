@@ -89,20 +89,24 @@ class GroupManager:
         groups = self.load_groups()
         return groups.get(group_id)
 
-    def get_group_by_assignment_and_owner(self, assignment_id, owner_enrollment):
-        """Find an existing group created by this owner for this assignment"""
-        groups = self.load_groups()
-        owner_lower = owner_enrollment.lower()
-        for g_id, g in groups.items():
-            if g.get('assignment_id') == str(assignment_id):
-                roster = g.get('roster', {})
-                # The creator is an 'Accepted' member and usually the one who created it.
-                # Since we don't store 'owner' explicitly at root, let's check if they are in roster.
-                # Actually, wait, let's just check if this user is in the roster of ANY group for this assignment.
-                # For simplicity, let's just return the first group they are a part of for this assignment.
-                if owner_lower in roster:
-                    return g
+    def get_owner(self, group):
+        owner = group.get('owner')
+        if owner:
+            return owner
+
+        # Older groups recorded their creator in the creation audit entry.
+        for entry in self.load_audit_logs().get(group['group_id'], []):
+            if entry.get('action') == 'Created Group':
+                return entry['actor'].strip().lower()
         return None
+
+    def get_group_by_assignment_and_owner(self, assignment_id, course_id, owner_enrollment):
+        """Find the group created by this enrollment for the exact assignment."""
+        owner = owner_enrollment.strip().lower()
+        return next((group for group in self.load_groups().values()
+                     if group.get('assignment_id') == assignment_id
+                     and group.get('course_id') == course_id
+                     and self.get_owner(group) == owner), None)
 
     def create_group(self, assignment_id, course_id, creator_enrollment, partner_enrollments):
         """
@@ -110,7 +114,7 @@ class GroupManager:
         If a group already exists for this user and assignment, it updates the roster and returns the existing group_id.
         """
         with self.io_lock:
-            existing_group = self.get_group_by_assignment_and_owner(assignment_id, creator_enrollment)
+            existing_group = self.get_group_by_assignment_and_owner(assignment_id, course_id, creator_enrollment)
             groups = self.load_groups()
             
             if existing_group:
@@ -124,7 +128,8 @@ class GroupManager:
                     if p_lower and p_lower not in roster:
                         roster[p_lower] = 'Pending'
                 
-                self.save_groups(groups)
+                if not self.save_groups(groups):
+                    raise OSError('Could not update group.')
                 return group_id
             
             # Create new group
@@ -143,13 +148,15 @@ class GroupManager:
                 'group_id': group_id,
                 'assignment_id': str(assignment_id),
                 'course_id': str(course_id),
+                'owner': creator_enrollment.strip().lower(),
                 'roster': roster,
                 'state': 'idle',  # 'idle', 'uploading', 'deleting'
                 'created_at': datetime.now().isoformat()
             }
             
             groups[group_id] = new_group
-            self.save_groups(groups)
+            if not self.save_groups(groups):
+                raise OSError('Could not create group.')
             
             # Initialize audit log
             audit_logs = self.load_audit_logs()
@@ -174,7 +181,9 @@ class GroupManager:
             if not group:
                 return False, "Group not found"
             
-            enrollment_lower = enrollment_number.lower()
+            if group.get('state', 'idle') != 'idle':
+                return False, "A group operation is in progress"
+            enrollment_lower = enrollment_number.strip().lower()
             if enrollment_lower not in group.get('roster', {}):
                 return False, "User not in group"
             
@@ -196,6 +205,25 @@ class GroupManager:
                 self.save_audit_logs(audit_logs)
             
             return True
+
+    def start_operation(self, group_id, owner, state, enrollments=None):
+        """Authorize and reserve a group before dispatching an LMS operation."""
+        with self.io_lock:
+            groups = self.load_groups()
+            group = groups.get(group_id)
+            if not group or self.get_owner(group) != owner:
+                return None
+            roster = group.get('roster', {})
+            if roster.get(owner) != 'Accepted':
+                return None
+            if enrollments and any(roster.get(enrollment) != 'Accepted' for enrollment in enrollments):
+                return None
+            if group.get('state', 'idle') != 'idle':
+                raise ValueError('A group operation is in progress.')
+            group['state'] = state
+            if not self.save_groups(groups):
+                raise ValueError('Could not reserve the group.')
+            return group
 
     def set_group_state(self, group_id, state):
         """Safely transitions the state of a group for concurrency lock"""

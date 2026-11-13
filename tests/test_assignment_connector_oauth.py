@@ -270,3 +270,56 @@ def test_tool_timing_event_is_safe_and_matches_metadata(environment, monkeypatch
     status = {'ready': 'completed', 'missing_attachment': 'failed', 'timeout': 'interrupted'}[outcome]
     assert metrics['stage_status']['download'] == status
     assert metrics['stage_elapsed_ms'] == result['_meta']['lmsplus']['stage_elapsed_ms']
+
+
+def test_public_oauth_limits_and_stateless_consent(monkeypatch):
+    import asyncio
+    from mcp.server.auth.provider import AuthorizationParams, RegistrationError
+    from mcp.shared.auth import OAuthClientInformationFull
+    from lms_mcp.http_security import registration_source
+
+    async def run_inline(operation, *args):
+        return operation(*args)
+
+    monkeypatch.setattr('lms_mcp.oauth.asyncio.to_thread', run_inline)
+
+    async def exercise():
+        store = MemoryStore()
+        settings = ConnectorSettings(ORIGIN, 'https://edge.test', bytes.fromhex('11' * 32), None)
+        oauth = AssignmentOAuthProvider(settings, store, lambda uid, account: (uid, account) == ('user', 'account'))
+
+        def metadata(index):
+            return OAuthClientInformationFull(
+                client_id=f'client-{index}', redirect_uris=[CALLBACK], token_endpoint_auth_method='none'
+            )
+
+        source = registration_source.set('192.0.2.1')
+        try:
+            for index in range(5):
+                await oauth.register_client(metadata(index))
+            with pytest.raises(RegistrationError):
+                await oauth.register_client(metadata(5))
+        finally:
+            registration_source.reset(source)
+
+        source = registration_source.set('192.0.2.2')
+        try:
+            client = metadata(6)
+            await oauth.register_client(client)
+        finally:
+            registration_source.reset(source)
+
+        keys = set(store.docs)
+        redirect = await oauth.authorize(client, AuthorizationParams(
+            redirect_uri=CALLBACK, redirect_uri_provided_explicitly=True,
+            code_challenge=create_s256_code_challenge(VERIFIER), scopes=['assignments:read'], state='state'
+        ))
+        request_id = parse_qs(urlsplit(redirect).query)['request'][0]
+        assert oauth.authorization(request_id)['client_id'] == client.client_id
+        assert set(store.docs) == keys
+        assert parse_qs(urlsplit(oauth.approve(request_id, 'user', 'account')).query)['code']
+        from lms_mcp.core import ConnectorError
+        with pytest.raises(ConnectorError):
+            oauth.approve(request_id, 'user', 'account')
+
+    asyncio.run(exercise())

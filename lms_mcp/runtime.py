@@ -32,7 +32,8 @@ class ConnectorRuntime:
     assignments: object
 
 
-def build_runtime(settings):
+def build_runtime(settings, login_allowlist=None):
+    from app.services.cms_blacklist import get_blacklist_service
     from app.services.discord_service import enqueue_mcp_authorization
     from app.services.firestore_service import get_firestore_service
     from app.utils.data_manager import data_manager
@@ -60,8 +61,12 @@ def build_runtime(settings):
         # Authorization must use a fresh server-side ownership record instead.
         user = store.get('users/' + user_id) or {}
         single = user.get('cms_account') or {}
-        return (user.get('account_id') == account_id and single.get('account_id') == account_id
-                or account_id in (user.get('cms_accounts') or {}))
+        account = single if (user.get('account_id') == account_id and single.get('account_id') == account_id) else (
+            (user.get('cms_accounts') or {}).get(account_id) or {}
+        )
+        enrollments = (user.get('username'), account.get('cms_username'))
+        return all(enrollment and (login_allowlist is None or enrollment in login_allowlist)
+                   and get_blacklist_service().is_allowed(enrollment) for enrollment in enrollments)
 
     return ConnectorRuntime(settings, store,
                             AssignmentOAuthProvider(settings, store, owns_fresh, enqueue_mcp_authorization),

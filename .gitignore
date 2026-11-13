@@ -98,3 +98,5 @@ staging-rollback/
 **/NEEDS-VALIDATION.md
 /REPORT.md
 /architecture.md
+
+/testing-login-allowlist.txt

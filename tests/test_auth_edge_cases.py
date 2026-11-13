@@ -126,7 +126,7 @@ class TestAuthLoginRouteEdgeCases:
     @patch('app.routes.auth.verify_turnstile', return_value=True)
     @patch('app.models.account.User.get', return_value=None)
     @patch('app.models.account.User.get_total_count', return_value=10)
-    @patch('app.services.cms_blacklist.get_blacklist_service')
+    @patch('app.routes.auth.get_blacklist_service')
     def test_login_route_session_lost_returns_502(self, mock_bl, mock_count, mock_user_get, mock_turnstile, client):
         """When atomic scraper returns session_lost, route returns HTTP 502."""
         mock_bl.return_value.check_access.return_value = (True, "")
@@ -150,7 +150,7 @@ class TestAuthLoginRouteEdgeCases:
     @patch('app.routes.auth.verify_turnstile', return_value=True)
     @patch('app.models.account.User.get', return_value=None)
     @patch('app.models.account.User.get_total_count', return_value=10)
-    @patch('app.services.cms_blacklist.get_blacklist_service')
+    @patch('app.routes.auth.get_blacklist_service')
     def test_login_route_real_bad_password_returns_401(self, mock_bl, mock_count, mock_user_get, mock_turnstile, client):
         """When atomic scraper returns auth_failed, route returns HTTP 401."""
         mock_bl.return_value.check_access.return_value = (True, "")
@@ -172,7 +172,7 @@ class TestAuthLoginRouteEdgeCases:
     @patch('app.routes.auth.verify_turnstile', return_value=True)
     @patch('app.models.account.User.get', return_value=None)
     @patch('app.models.account.User.get_total_count', return_value=10)
-    @patch('app.services.cms_blacklist.get_blacklist_service')
+    @patch('app.routes.auth.get_blacklist_service')
     @patch('app.routes.auth.authenticate_with_cms', return_value='SESSION_LOST')
     def test_login_route_fallback_session_lost_returns_502(self, mock_auth_cms, mock_bl, mock_count, mock_user_get, mock_turnstile, client):
         """When atomic scraper is inconclusive and fallback returns SESSION_LOST, route returns HTTP 502."""
@@ -192,7 +192,7 @@ class TestAuthLoginRouteEdgeCases:
     @patch('app.models.account.User.get', return_value=None)
     @patch('app.models.account.User.create')
     @patch('app.models.account.User.get_total_count', return_value=10)
-    @patch('app.services.cms_blacklist.get_blacklist_service')
+    @patch('app.routes.auth.get_blacklist_service')
     def test_login_route_safe_profile_extraction_when_html_is_none(self, mock_bl, mock_count, mock_user_create, mock_user_get, mock_turnstile, client):
         """When bundle has html as None or unexpected type, profile extraction does not crash."""
         mock_bl.return_value.check_access.return_value = (True, "")
@@ -208,7 +208,7 @@ class TestAuthLoginRouteEdgeCases:
         }
 
         with patch('app.utils.enhanced_scraper.EnhancedCMSScraper.scrape_full_sync_atomic', return_value=mock_bundle):
-            with patch('app.routes.auth.login_user'):
+            with patch('app.routes.auth.authenticate_with_cms', return_value=False):
                 resp = client.post('/auth/login', data={
                     'username': '02-000000-013',
                     'password': 'validpassword'

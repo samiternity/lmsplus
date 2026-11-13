@@ -100,6 +100,12 @@
             });
     }
 
+    function escapeGroupText(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[char]));
+    }
+
     function renderGroups() {
         const pendingList = document.getElementById('pendingInvitesList');
         const activeList = document.getElementById('activeGroupsList');
@@ -120,7 +126,7 @@
             // Format Members
             let membersHtml = Object.entries(group.roster).map(([enr, status]) => {
                 let badge = status === 'Accepted' ? 'success' : (status === 'Pending' ? 'warning' : 'danger');
-                return `<span class="badge bg-${badge} me-1" title="${status}">${enr.toUpperCase()}</span>`;
+                return `<span class="badge bg-${badge} me-1" title="${escapeGroupText(status)}">${escapeGroupText(enr.toUpperCase())}</span>`;
             }).join(' ');
             
             // Date formatting
@@ -137,7 +143,7 @@
                 pendingHtml += `
                     <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
                         <div>
-                            <strong>Course:</strong> ${group.course_id} | <strong>Assignment:</strong> ${group.assignment_id}<br>
+                            <strong>Course:</strong> ${escapeGroupText(group.course_id)} | <strong>Assignment:</strong> ${escapeGroupText(group.assignment_id)}<br>
                             <small class="text-muted">Members: ${membersHtml}</small>
                         </div>
                         <div>
@@ -150,8 +156,8 @@
                 pastCount++;
                 pastHtml += `
                     <tr>
-                        <td class="px-4 py-3">${group.course_id}</td>
-                        <td class="px-4 py-3">${group.assignment_id}</td>
+                        <td class="px-4 py-3">${escapeGroupText(group.course_id)}</td>
+                        <td class="px-4 py-3">${escapeGroupText(group.assignment_id)}</td>
                         <td class="px-4 py-3">${membersHtml}</td>
                         <td class="px-4 py-3">${dateStr}</td>
                         <td class="px-4 py-3">
@@ -169,8 +175,8 @@
                 
                 activeHtml += `
                     <tr>
-                        <td class="px-4 py-3">${group.course_id}</td>
-                        <td class="px-4 py-3">${group.assignment_id}</td>
+                        <td class="px-4 py-3">${escapeGroupText(group.course_id)}</td>
+                        <td class="px-4 py-3">${escapeGroupText(group.assignment_id)}</td>
                         <td class="px-4 py-3">${membersHtml}</td>
                         <td class="px-4 py-3">${dateStr}</td>
                         <td class="px-4 py-3">${stateBadge}</td>
@@ -223,10 +229,10 @@
                         let dt = new Date(log.timestamp).toLocaleString();
                         html += `<tr>
                             <td>${dt}</td>
-                            <td>${log.actor}</td>
-                            <td>${log.action}</td>
-                            <td>${log.target_file}</td>
-                            <td>${log.sync_status}</td>
+                            <td>${escapeGroupText(log.actor)}</td>
+                            <td>${escapeGroupText(log.action)}</td>
+                            <td>${escapeGroupText(log.target_file)}</td>
+                            <td>${escapeGroupText(log.sync_status)}</td>
                         </tr>`;
                     });
                 }

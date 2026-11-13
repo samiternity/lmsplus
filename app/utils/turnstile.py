@@ -18,7 +18,7 @@ def verify_turnstile(token: str, remote_ip: str = None, action: str = None) -> b
     
     Args:
         token: The cf-turnstile-response string submitted by client.
-        remote_ip: Client's real IP address (e.g., from CF-Connecting-IP).
+        remote_ip: Client address resolved by the application server.
         action: Expected action (e.g., 'login', 'register').
         
     Returns:
@@ -37,10 +37,10 @@ def verify_turnstile(token: str, remote_ip: str = None, action: str = None) -> b
         except RuntimeError:
             pass
 
-    # If secret key is not configured (e.g. fresh local dev), allow bypass in testing
+    # Local development can run without a Turnstile key. Hosted logins fail closed.
     if not secret_key:
         logger.warning("[TURNSTILE] TURNSTILE_SECRET_KEY not set; skipping check in development.")
-        return True
+        return not bool(os.environ.get('K_SERVICE'))
 
     payload = {
         "secret": secret_key,

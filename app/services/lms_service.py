@@ -2116,120 +2116,6 @@ class LMSService:
                      account_id=account_id, operation="delete_submission", exc_info=True)
             return False
     
-    def handle_group_test_upload(self, active_account_id: str, active_student_id: str, group_enrollments: list,
-                                 assignment_no: int, file_content: bytes, filename: str, content_type: str,
-                                 semester: str, course: str, assignment_id: str, offered_course_id: str,
-                                 delete_existing: bool) -> list:
-        """
-        Handle a group test upload by mapping enrollments to student_ids from cache
-        and impersonating each group member to perform the upload/deletion.
-        """
-        results = []
-        from app.models.account import AccountManager
-        from app.models.user import User
-        from io import BytesIO
-        import json
-        
-        account_manager = AccountManager()
-        users_data = account_manager.load_users()
-        
-        for enrollment in group_enrollments:
-            enrollment = enrollment.strip()
-            if not enrollment:
-                continue
-                
-            result = {'enrollment': enrollment, 'status': 'failed', 'message': ''}
-            
-            # Find the account_id for this enrollment number
-            target_account_id = None
-            target_student_id = None
-            target_submission_id = None
-            
-            for user_id, user_dict in users_data.items():
-                acc_dict = user_dict.get('cms_account', {})
-                if acc_dict.get('cms_username', '').strip().lower() == enrollment.lower():
-                    target_account_id = acc_dict.get('account_id')
-                    # Extract student_id and submission_id from lms_cache
-                    lms_cache = acc_dict.get('lms_cache', {})
-                    for cache_key, cache_val in lms_cache.items():
-                        if cache_key.startswith('assignments'):
-                            for assignment in cache_val.get('data', {}).get('assignments', []):
-                                if assignment.get('student_id'):
-                                    target_student_id = assignment.get('student_id')
-                                # If this is the specific assignment, extract submission_id
-                                if str(assignment.get('assignment_no')) == str(assignment_no) and assignment.get('course_name') == course:
-                                    if assignment.get('submission_id'):
-                                        target_submission_id = assignment.get('submission_id')
-                    break
-            
-            if not target_account_id:
-                logger.warning(f"[GROUP UPLOAD] Enrollment {enrollment} failed: Account not registered in UniTrack.")
-                result['message'] = 'Account not registered in UniTrack.'
-                results.append(result)
-                continue
-                
-            if not target_student_id:
-                logger.warning(f"[GROUP UPLOAD] Enrollment {enrollment} failed: Student ID not found in cache. They must log in to view assignments once.")
-                result['message'] = 'Student ID not found in cache. They must log in to view assignments once.'
-                results.append(result)
-                continue
-            
-            try:
-                # Wrap file content in BytesIO for upload/deletion
-                file_obj = BytesIO(file_content)
-                file_obj.filename = filename
-                file_obj.content_type = content_type
-                
-                # Perform Deletion if requested
-                if delete_existing:
-                    if target_submission_id:
-                        logger.info(f"[GROUP UPLOAD] Attempting to delete existing submission {target_submission_id} for {enrollment}...")
-                        del_success = self.delete_assignment_submission(
-                            account_id=target_account_id,
-                            submission_id=target_submission_id,
-                            assignment_id=assignment_id,
-                            offered_course_id=offered_course_id,
-                            semester=semester,
-                            course=course
-                        )
-                        if not del_success:
-                            logger.warning(f"[GROUP UPLOAD] Failed to delete existing submission for {enrollment}")
-                        else:
-                            logger.info(f"[GROUP UPLOAD] Successfully deleted existing submission for {enrollment}")
-                    else:
-                        logger.info(f"[GROUP UPLOAD] No existing submission found to delete for {enrollment}")
-                
-                # Perform Upload
-                logger.info(f"[GROUP UPLOAD] Initiating impersonated upload for {enrollment} using student_id: {target_student_id}...")
-                file_obj.seek(0)
-                upload_success = self.upload_assignment_submission(
-                    account_id=target_account_id,
-                    assignment_no=assignment_no,
-                    file=file_obj,
-                    semester=semester,
-                    course=course,
-                    assignment_id=assignment_id,
-                    offered_course_id=offered_course_id,
-                    student_id=target_student_id
-                )
-                
-                if upload_success:
-                    logger.info(f"[GROUP UPLOAD] SUCCESS: LMS accepted the group upload for {enrollment}!")
-                    result['status'] = 'success'
-                    result['message'] = 'Uploaded successfully.'
-                else:
-                    logger.warning(f"[GROUP UPLOAD] FAILED: LMS rejected the group upload for {enrollment}.")
-                    result['message'] = 'LMS rejected upload.'
-                    
-            except Exception as e:
-                logger.error(f"[GROUP UPLOAD] Unexpected error for {enrollment}: {e}")
-                result['message'] = str(e)
-                
-            results.append(result)
-            
-        logger.info(f"[GROUP UPLOAD] Finished processing all group members. Results: {results}")
-        return results
-
     def upload_assignment_submission(self, account_id: str, assignment_no: int,
                                      file, semester: Optional[str], course: str,
                                      assignment_id: Optional[str] = None,
@@ -2375,148 +2261,94 @@ class LMSService:
                      account_id=account_id, operation="upload_submission", exc_info=True)
             return False
 
-    def group_upload_assignment(self, group_manager, account_manager, group_id: str, file_data: bytes, filename: str, content_type: str, semester: str, course: str, assignment_no: int, assignment_id: str, offered_course_id: str):
-        """Start async pipeline for parallel group assignment upload."""
-        import threading
-        group_manager.set_group_state(group_id, 'uploading')
-        
-        thread = threading.Thread(
-            target=self._group_upload_thread,
-            args=(group_manager, account_manager, group_id, file_data, filename, content_type, semester, course, assignment_no, assignment_id, offered_course_id)
-        )
-        thread.daemon = True
-        thread.start()
-        
-    def _group_upload_thread(self, group_manager, account_manager, group_id: str, file_data: bytes, filename: str, content_type: str, semester: str, course: str, assignment_no: int, assignment_id: str, offered_course_id: str):
-        """Background thread executing parallel upload."""
-        try:
-            group = group_manager.get_group(group_id)
-            if not group:
-                return
-            
-            roster = group.get('roster', {})
-            enrollments = [enr for enr, status in roster.items() if status == 'Accepted']
-            users_data = account_manager.load_users()
-            
-            # Map enrollments to account_ids
-            enrollment_to_account = {}
-            for uid, udata in users_data.items():
-                cms_enr = udata.get('cms_account', {}).get('cms_username', '').strip().lower()
-                if cms_enr in [e.lower() for e in enrollments]:
-                    enrollment_to_account[cms_enr] = uid
-                    
-            from concurrent.futures import ThreadPoolExecutor
-            
-            class MockFile:
-                def __init__(self, filename, content_type, data):
-                    self.filename = filename
-                    self.content_type = content_type
-                    self.data = data
-                    self._pos = 0
-                def read(self, size=-1):
-                    if size == -1:
-                        ret = self.data[self._pos:]
-                        self._pos = len(self.data)
-                        return ret
-                    ret = self.data[self._pos:self._pos+size]
-                    self._pos += size
-                    return ret
-                def seek(self, pos):
-                    self._pos = pos
+    def handle_group_test_upload(self, group_manager, group, semester, upload, enrollments, replace):
+        """Run the testing-only upload for the owner and selected accepted members."""
+        from flask import current_app
 
-            def _upload_for_member(enrollment):
-                acc_id = enrollment_to_account.get(enrollment.lower())
-                if not acc_id:
-                    return (enrollment, False, "User not found locally.")
-                    
-                mock_file = MockFile(filename, content_type, file_data)
-                
+        if not current_app.config['TEST_GROUP_UPLOAD_ENABLED']:
+            raise PermissionError('Group test upload is disabled')
+        owner = group_manager.get_owner(group)
+        members = {owner, *enrollments}
+        return self._run_group_operation(group_manager, group, semester, upload, members, replace)
+
+    def start_group_operation(self, group_manager, group, semester, upload):
+        """Run an authorized group operation in a background thread."""
+        from flask import current_app
+        from threading import Thread
+
+        app = current_app._get_current_object()
+
+        def run():
+            with app.app_context():
+                self._run_group_operation(group_manager, group, semester, upload)
+
+        try:
+            Thread(target=run, daemon=True).start()
+        except Exception:
+            group_manager.set_group_state(group['group_id'], 'idle')
+            raise
+
+    def _run_group_operation(self, group_manager, group, semester, upload, selected=None, replace=False):
+        from app.models.account import User
+        from app.services.cms_blacklist import get_blacklist_service
+        from app.services.testing_access import testing_login_allowed
+        from io import BytesIO
+
+        group_id = group['group_id']
+        course = group['course_id']
+        assignment_id = group['assignment_id']
+        operation = 'Upload' if upload else 'Delete'
+        filename = upload[1] if upload else '-'
+        results = []
+
+        def run_member(enrollment):
+            user = User.get(enrollment)
+            account = user.cms_account if user else None
+            if (not account or account.cms_username != enrollment or not testing_login_allowed(enrollment)
+                    or not get_blacklist_service().is_allowed(enrollment)):
+                return False
+
+            assignments = self.get_assignments_for_course(account.account_id, semester, course,
+                                                           force_refresh=True)
+            assignment = next((item for item in assignments
+                               if item.assignment_id == assignment_id and item.offered_course_id), None)
+            if not assignment:
+                return False
+
+            target = dict(account_id=account.account_id, semester=semester, course=course,
+                          assignment_id=assignment.assignment_id, offered_course_id=assignment.offered_course_id)
+            if upload is not None and not assignment.student_id:
+                return False
+            if upload is None or (replace and assignment.submission_id):
+                if not assignment.submission_id:
+                    return False
+                if not self.delete_assignment_submission(submission_id=assignment.submission_id, **target):
+                    return False
+                if upload is None:
+                    return True
+
+            file = BytesIO(upload[0])
+            file.filename = filename
+            file.content_type = upload[2]
+            return self.upload_assignment_submission(
+                file=file, assignment_no=assignment.assignment_no, student_id=assignment.student_id, **target
+            )
+
+        try:
+            for enrollment, status in group['roster'].items():
+                if status != 'Accepted' or (selected is not None and enrollment not in selected):
+                    continue
                 try:
-                    success = self.upload_assignment_submission(
-                        account_id=acc_id,
-                        assignment_no=assignment_no,
-                        file=mock_file,
-                        semester=semester,
-                        course=course,
-                        assignment_id=assignment_id,
-                        offered_course_id=offered_course_id,
-                        student_id=None # Student ID not critically strictly required here due to test mode bypassing
-                    )
-                    return (enrollment, success, "Success" if success else "LMS Rejected")
-                except Exception as e:
-                    return (enrollment, False, str(e))
-            
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                results = list(executor.map(_upload_for_member, enrollments))
-            
-            for enrollment, success, msg in results:
-                action = 'Upload Success' if success else 'Upload Failed'
-                group_manager.append_audit_log(group_id, enrollment, action, filename, msg)
-                
-        except Exception as e:
-            group_manager.append_audit_log(group_id, "System", "Upload Pipeline Error", filename, str(e))
+                    success = run_member(enrollment)
+                except Exception:
+                    logger.exception('Group %s failed for group %s', operation.lower(), group_id)
+                    success = False
+                message = 'Success' if success else 'LMS rejected the operation or the assignment was unavailable.'
+                group_manager.append_audit_log(
+                    group_id, enrollment, f'{operation} {"Success" if success else "Failed"}', filename, message
+                )
+                results.append({'enrollment': enrollment, 'status': 'success' if success else 'failed',
+                                'message': message})
         finally:
             group_manager.set_group_state(group_id, 'idle')
-
-    def group_delete_assignment(self, group_manager, account_manager, group_id: str, semester: str, course: str, assignment_no: int, submission_id: str, assignment_id: str, offered_course_id: str):
-        """Start async pipeline for parallel group assignment deletion."""
-        import threading
-        group_manager.set_group_state(group_id, 'deleting')
-        
-        thread = threading.Thread(
-            target=self._group_delete_thread,
-            args=(group_manager, account_manager, group_id, semester, course, assignment_no, submission_id, assignment_id, offered_course_id)
-        )
-        thread.daemon = True
-        thread.start()
-        
-    def _group_delete_thread(self, group_manager, account_manager, group_id: str, semester: str, course: str, assignment_no: int, submission_id: str, assignment_id: str, offered_course_id: str):
-        """Background thread executing parallel deletion."""
-        try:
-            group = group_manager.get_group(group_id)
-            if not group:
-                return
-            
-            roster = group.get('roster', {})
-            enrollments = [enr for enr, status in roster.items() if status == 'Accepted']
-            users_data = account_manager.load_users()
-            
-            enrollment_to_account = {}
-            for uid, udata in users_data.items():
-                cms_enr = udata.get('cms_account', {}).get('cms_username', '').strip().lower()
-                if cms_enr in [e.lower() for e in enrollments]:
-                    enrollment_to_account[cms_enr] = uid
-                    
-            from concurrent.futures import ThreadPoolExecutor
-            
-            def _delete_for_member(enrollment):
-                acc_id = enrollment_to_account.get(enrollment.lower())
-                if not acc_id:
-                    return (enrollment, False, "User not found locally.")
-                    
-                # Note: Assuming self.delete_assignment_submission takes these parameters
-                try:
-                    success = self.delete_assignment_submission(
-                        account_id=acc_id,
-                        assignment_no=assignment_no,
-                        semester=semester,
-                        course=course,
-                        submission_id=submission_id,
-                        assignment_id=assignment_id,
-                        offered_course_id=offered_course_id
-                    )
-                    return (enrollment, success, "Success" if success else "LMS Rejected")
-                except Exception as e:
-                    return (enrollment, False, str(e))
-            
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                results = list(executor.map(_delete_for_member, enrollments))
-            
-            for enrollment, success, msg in results:
-                action = 'Delete Success' if success else 'Delete Failed'
-                group_manager.append_audit_log(group_id, enrollment, action, "-", msg)
-                
-        except Exception as e:
-            group_manager.append_audit_log(group_id, "System", "Delete Pipeline Error", "-", str(e))
-        finally:
-            group_manager.set_group_state(group_id, 'idle')
+        return results

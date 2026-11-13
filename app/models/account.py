@@ -735,11 +735,12 @@ class User(UserMixin):
                  # MULTI-ACCOUNT: Uncomment these when re-enabling
                  # cms_accounts=None, active_account_id=None,
                  preferences=None, notification_preferences=None,
-                 batch_bucket=None, discord_id=None, discord_username=None, last_active_at=None, created_at=None):
+                 batch_bucket=None, discord_id=None, discord_username=None, last_active_at=None, created_at=None, session_version=None):
         self.id = id
         self.username = username
         self.email = email
         self.password_hash = password_hash
+        self.session_version = session_version
         self.discord_id = discord_id
         self.discord_username = discord_username
         self.last_active_at = last_active_at
@@ -815,6 +816,7 @@ class User(UserMixin):
             'username': self.username,
             'email': self.email,
             'password_hash': self.password_hash,
+            'session_version': self.session_version,
             'preferences': self.preferences,
             'notification_preferences': self.notification_preferences,
             'batch_bucket': self.batch_bucket,
@@ -865,6 +867,7 @@ class User(UserMixin):
             username=data['username'],
             email=data['email'],
             password_hash=data.get('password_hash'),
+            session_version=data.get('session_version'),
             cms_account=cms_account,
             account_id=account_id,
             preferences=data.get('preferences', {}),
@@ -1033,16 +1036,19 @@ class User(UserMixin):
         return None
     
     @staticmethod
-    def get(user_id):
+    def get(user_id, *, fresh=False):
         """Get user by ID - tries Firestore first, then local storage"""
         try:
             # Try Firestore first (works on Cloud Run)
             fs = User._get_firestore()
             if fs:
-                user_data = fs.get_document('users', user_id)
+                options = {'bypass_cache': True} if fresh else {}
+                user_data = fs.get_document('users', user_id, **options)
                 if user_data:
                     user = User.from_dict(user_id, user_data)
                     return user
+                if fresh:
+                    return None
             
             # Fallback to local JSON (works locally)
             users = account_manager.load_users()
@@ -1198,7 +1204,8 @@ class User(UserMixin):
             if not os.environ.get('PYTEST_CURRENT_TEST'):
                 fs = User._get_firestore()
                 if fs:
-                    fs.save_document('users', self.id, user_dict)
+                    if not fs.save_document('users', self.id, user_dict):
+                        return False
             
             return True
         except Exception as e:

@@ -1,18 +1,17 @@
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask import request
 from flask_login import current_user
 
 def get_rate_limit_key():
     """
     Returns user ID if authenticated (to protect eduroam users).
-    Otherwise returns IP address from Cloudflare header or remote_addr.
+    Otherwise returns the proxy-adjusted remote address.
     """
     if current_user and current_user.is_authenticated:
         return str(current_user.id)
     
     # Unauthenticated: use IP
-    return request.headers.get("CF-Connecting-IP") or request.remote_addr or "127.0.0.1"
+    return request.remote_addr or "127.0.0.1"
 
 limiter = Limiter(
     key_func=get_rate_limit_key,
