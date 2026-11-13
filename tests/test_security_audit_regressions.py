@@ -185,6 +185,8 @@ def test_office_rejects_external_hyperlinks_and_oversized_xml():
 def test_fresh_cms_scrapers_never_reuse_or_persist_cookies(app, monkeypatch):
     from app.utils.enhanced_scraper import EnhancedCMSScraper
 
+    monkeypatch.setenv('LMS_WORKER_ORIGIN', 'http://127.0.0.1:8787')
+    monkeypatch.setenv('LMS_WORKER_PROXY_KEY', 'ab' * 32)
     monkeypatch.setattr('app.utils.data_manager.data_manager.load_session_data', Mock(side_effect=AssertionError))
     monkeypatch.setattr('app.utils.data_manager.data_manager.save_session_data', Mock(side_effect=AssertionError))
     original_login = Mock(return_value=False)
