@@ -98,11 +98,12 @@ The `unitrack-testing` deployment requires the GitHub `testing` environment secr
 deploy reads the same variable or the ignored `testing-login-allowlist.txt` file.
 The server blocks all testing logins if the allowlist is absent or malformed.
 
-Use a dedicated `TESTING_SECRET_KEY` and testing-only Turnstile keys. If the testing
-deployment uses Scheduler or Discord, configure the matching `TESTING_SCHEDULER_SECRET`
-and `TESTING_DISCORD_*` secrets. Keep the testing encryption key stable for existing
-data. When replacing a previously shared signing key, preserve access to existing
-encrypted testing data by migrating it or resetting the testing records.
+Store `SECRET_KEY`, `TURNSTILE_SECRET_KEY`, and `TURNSTILE_SITE_KEY` in the
+GitHub `testing` environment with values dedicated to testing. Store optional
+`SCHEDULER_SECRET` and `DISCORD_*` credentials in that environment as well.
+Keep these names out of repository-wide secrets so a missing testing value
+cannot fall back to a shared credential. Keep the existing testing `SECRET_KEY`
+stable when it is used to encrypt stored CMS credentials.
 
 For MCP consent replay records, configure Firestore TTL on the `expires_at` field
 of the `mcp_consent_used` collection group.
