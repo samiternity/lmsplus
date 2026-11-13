@@ -91,6 +91,22 @@ firebase deploy --config firebase.hosting.local.json --only hosting --project "$
 
 For browser push, use your own Firebase browser app settings and public VAPID key from the variables in [`.env.example`](.env.example). Verify token registration and delivery before relying on it. Cloud Tasks also needs a separate authentication check on a fresh installation.
 
+### Private testing deployment
+
+The `unitrack-testing` deployment requires the GitHub `testing` environment secret
+`TESTING_LOGIN_ALLOWLIST`. Set it to one enrollment ID per line. The manual testing
+deploy reads the same variable or the ignored `testing-login-allowlist.txt` file.
+The server blocks all testing logins if the allowlist is absent or malformed.
+
+Use a dedicated `TESTING_SECRET_KEY` and testing-only Turnstile keys. If the testing
+deployment uses Scheduler or Discord, configure the matching `TESTING_SCHEDULER_SECRET`
+and `TESTING_DISCORD_*` secrets. Keep the testing encryption key stable for existing
+data. When replacing a previously shared signing key, preserve access to existing
+encrypted testing data by migrating it or resetting the testing records.
+
+For MCP consent replay records, configure Firestore TTL on the `expires_at` field
+of the `mcp_consent_used` collection group.
+
 ### Other integrations
 
 - Cloud Scheduler. Use a separate `SCHEDULER_SECRET` for your deployment. Send it as the bearer token from Scheduler to the app's scheduler routes.

@@ -36,6 +36,8 @@ def create_app():
     app.config['APP_ENV'] = config.env_name
     app.config['IS_PRODUCTION'] = is_production
     app.config['APP_URL'] = config.app_url
+    from app.services.testing_access import configure_testing_access
+    configure_testing_access(app, config)
     app.config['USE_FIRESTORE'] = config.use_firestore
     app.config['TURNSTILE_SITE_KEY'] = config.turnstile_site_key
     app.config['TURNSTILE_SECRET_KEY'] = config.turnstile_secret_key
@@ -80,7 +82,7 @@ def create_app():
     # with a 30-day lifetime means the browser keeps it across restarts without
     # needing a separate remember-me cookie.
     app.config['SESSION_COOKIE_NAME'] = '__session'
-    app.config['SESSION_COOKIE_SECURE'] = is_production
+    app.config['SESSION_COOKIE_SECURE'] = is_production or bool(os.environ.get('K_SERVICE'))
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
@@ -90,15 +92,6 @@ def create_app():
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = 30 * 24 * 60 * 60  # 30 days in seconds
 
-    # Flask-Login remember cookie — must also be named '__session' on Firebase
-    # Hosting (only one cookie name is forwarded).  We reuse the session cookie
-    # so remember=True in login_user() extends the same cookie lifetime.
-    app.config['REMEMBER_COOKIE_NAME'] = '__session'
-    app.config['REMEMBER_COOKIE_SECURE'] = is_production
-    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
-    app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
-    app.config['REMEMBER_COOKIE_DURATION'] = 30 * 24 * 60 * 60  # 30 days in seconds
-    
     # LMS-related configuration
     app.config['LMS_BASE_URL'] = os.environ.get('LMS_BASE_URL') or 'https://lms.bahria.edu.pk'
     app.config['LMS_CACHE_TIMEOUT'] = int(os.environ.get('LMS_CACHE_TIMEOUT', '3600'))  # 1 hour default
@@ -174,7 +167,7 @@ def create_app():
     if connector_settings:
         from lms_mcp.runtime import build_runtime
         from app.routes.assignment_connector import connector_bp
-        app.extensions['lms_mcp'] = build_runtime(connector_settings)
+        app.extensions['lms_mcp'] = build_runtime(connector_settings, app.config['TESTING_LOGIN_ALLOWLIST'])
         app.register_blueprint(connector_bp)
     
     # Store cms_id in flask.g for logger
@@ -310,6 +303,25 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         from app.models.account import User
-        return User.get(user_id)
+        from app.services.cms_blacklist import get_blacklist_service
+        from app.services.testing_access import testing_login_allowed
+
+        from flask import session
+
+        hosted = bool(os.environ.get('K_SERVICE'))
+        user = User.get(user_id, fresh=True) if hosted else User.get(user_id)
+        version = session.get('auth_version')
+        if not user or version != user.session_version:
+            return None
+        if hosted and not version:
+            return None
+        enrollments = {user.username}
+        if user.cms_account:
+            enrollments.add(user.cms_account.cms_username)
+        blacklist = get_blacklist_service()
+        if all(testing_login_allowed(enrollment) and blacklist.is_allowed(enrollment)
+               for enrollment in enrollments):
+            return user
+        return None
     
     return app

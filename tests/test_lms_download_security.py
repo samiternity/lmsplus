@@ -50,7 +50,7 @@ def test_download_fallback_refuses_upstream_redirect(download_route, monkeypatch
     upstream.headers = {"Location": "http://outside.example.test/file"}
     assert call("https://lms.bahria.edu.pk/file.pdf").status_code == 502
     session.get.assert_called_once_with(
-        "https://lms.bahria.edu.pk/file.pdf", stream=True, timeout=60, allow_redirects=False
+        "https://lms.bahria.edu.pk/file.pdf", stream=True, timeout=(5, 10), allow_redirects=False
     )
     upstream.close.assert_called_once()
 
@@ -60,6 +60,7 @@ def test_allowed_download_fallback_streams_an_attachment(download_route, monkeyp
     monkeypatch.setattr(lms, "file_worker_origin", lambda: None)
     upstream = session.get.return_value
     upstream.status_code = 200
+    upstream.headers = {}
     upstream.iter_content.return_value = iter([b"synthetic file"])
     response = call("https:/lms.bahria.edu.pk/file.pdf")
     try:

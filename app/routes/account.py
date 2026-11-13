@@ -65,7 +65,7 @@ def add_account():
         auth_result = authenticate_with_cms(cms_username, cms_password, institute_id=target_institute)
         logger.debug(f"CMS authentication result: {auth_result}")
         
-        if auth_result:
+        if auth_result is True:
             logger.debug(f"Adding CMS account for user {current_user.username}")
             if hasattr(current_user, 'set_cms_account'):
                 account_id = current_user.set_cms_account(

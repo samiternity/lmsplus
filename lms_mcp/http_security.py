@@ -2,9 +2,13 @@
 
 import json
 import logging
+import os
+from contextvars import ContextVar
+from ipaddress import IPv6Address, ip_address, ip_network
 from urllib.parse import parse_qs
 
 from starlette.responses import JSONResponse, Response
+from starlette.datastructures import Headers
 
 from lms_mcp.core import SCOPE
 
@@ -12,6 +16,29 @@ from lms_mcp.core import SCOPE
 logger = logging.getLogger(__name__)
 OAUTH_ERRORS = {'invalid_request', 'invalid_client', 'invalid_grant', 'invalid_scope',
                 'unauthorized_client', 'unsupported_grant_type', 'invalid_target', 'server_error'}
+
+
+registration_source = ContextVar('registration_source', default='unknown')
+
+
+def _registration_source(scope):
+    # Use the ASGI server's connection identity, never a client-supplied CDN header.
+    client = scope.get('client')
+    remote = client[0] if client else ''
+    if os.environ.get('K_SERVICE'):
+        # Cloud Run is the final ingress hop, including for Hosting rewrites.
+        forwarded = Headers(scope=scope).getlist('x-forwarded-for')
+        if forwarded:
+            remote = forwarded[-1].rsplit(',', 1)[-1].strip()
+    try:
+        address = ip_address(remote)
+    except ValueError:
+        return 'unknown'
+    if isinstance(address, IPv6Address):
+        if address.ipv4_mapped:
+            return str(address.ipv4_mapped)
+        return str(ip_network((address, 64), strict=False))
+    return str(address) if address else 'unknown'
 
 
 class ConnectorHTTPGuard:
@@ -78,4 +105,11 @@ class ConnectorHTTPGuard:
                                grant if grant in ('authorization_code', 'refresh_token') else 'other',
                                error if isinstance(error, str) and error in OAUTH_ERRORS else 'unknown')
             await send(message)
-        await self.app(scope, receive, private_send)
+        if scope['path'] == '/register' and scope['method'] == 'POST':
+            source = registration_source.set(_registration_source(scope))
+            try:
+                await self.app(scope, receive, private_send)
+            finally:
+                registration_source.reset(source)
+        else:
+            await self.app(scope, receive, private_send)

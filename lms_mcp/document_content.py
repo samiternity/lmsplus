@@ -30,10 +30,29 @@ class RenderingRequired(ValueError):
     """The fast path cannot preserve this document; render the original layout."""
 
 
-def _checked_xml(data):
-    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
+class BoundedTreeBuilder(ET.TreeBuilder):
+    def __init__(self):
+        super().__init__()
+        self.elements = 0
+        self.depth = 0
+
+    def doctype(self, name, public_id, system_id):
         raise ValueError("Document XML declarations are unsupported")
-    return ET.fromstring(data)
+
+    def start(self, tag, attrs):
+        self.elements += 1
+        self.depth += 1
+        if self.elements > 50_000 or self.depth > 128:
+            raise ValueError("Document XML exceeds the processing limit")
+        return super().start(tag, attrs)
+
+    def end(self, tag):
+        self.depth -= 1
+        return super().end(tag)
+
+
+def _checked_xml(data):
+    return ET.fromstring(data, parser=ET.XMLParser(target=BoundedTreeBuilder()))
 
 
 def _image_block(data):

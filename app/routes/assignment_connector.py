@@ -50,7 +50,10 @@ def consent():
     account = eligible_accounts(configured).get(active_account.account_id) if active_account else None
     if request.method == 'POST':
         if request.form.get('decision') == 'deny':
-            return redirect(configured.oauth.deny(request_id))
+            try:
+                return redirect(configured.oauth.deny(request_id))
+            except ConnectorError as error:
+                return render_template('connector_consent.html', expired=True, hide_chrome=True, error=error.message), 400
         if request.form.get('decision') != 'allow' or not account or request.form.get('account_id') != account.account_id:
             abort(403)
         try:

@@ -7,6 +7,7 @@ from app.cms_scraper import BahriaCMSScraper
 from app.utils.data_manager import data_manager
 from app.models.account import CMSAccount
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from bs4 import BeautifulSoup
 
@@ -14,9 +15,10 @@ from bs4 import BeautifulSoup
 class EnhancedCMSScraper(BahriaCMSScraper):
     """Enhanced CMS scraper with multi-account support"""
     
-    def __init__(self, account: CMSAccount):
+    def __init__(self, account: CMSAccount, *, persist_session=True):
         super().__init__()
         self.account = account
+        self.persist_session = persist_session
         self.account_id = account.account_id
         
         # Override data directory to use account-specific directory
@@ -38,6 +40,8 @@ class EnhancedCMSScraper(BahriaCMSScraper):
     
     def save_session(self, username=None):
         """Save session cookies for the account"""
+        if not self.persist_session:
+            return False
         try:
             # Save to standard CMS data manager
             result = data_manager.save_session_data(self.account_id, self.session.cookies)
@@ -62,6 +66,8 @@ class EnhancedCMSScraper(BahriaCMSScraper):
     
     def load_session(self, username=None):
         """Load saved session cookies for the account"""
+        if not self.persist_session:
+            return False
         try:
             has_cookies = False
             
@@ -1011,6 +1017,19 @@ class MultiAccountScraperManager:
             data_manager.save_account_data(account_id, 'sync_status', current_copy)
         except Exception as e:
             print(f"Warning: could not save sync_status to disk: {e}")
+
+    @contextmanager
+    def credential_scraper(self, username, password, institute_id):
+        """Use a fresh cookie jar for each credential check."""
+        account = CMSAccount(
+            account_id=username, cms_username=username, cms_password=password,
+            institute_id=institute_id
+        )
+        scraper = EnhancedCMSScraper(account, persist_session=False)
+        try:
+            yield scraper
+        finally:
+            scraper.session.close()
 
     def get_scraper(self, account: CMSAccount) -> EnhancedCMSScraper:
         """Get or create scraper for an account"""
