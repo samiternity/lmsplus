@@ -58,9 +58,9 @@ jobs:
       - name: Validate private testing login settings
         env:
           TESTING_LOGIN_ALLOWLIST: ${{ secrets.TESTING_LOGIN_ALLOWLIST }}
-          TESTING_SECRET_KEY: ${{ secrets.TESTING_SECRET_KEY }}
-          TESTING_TURNSTILE_SECRET_KEY: ${{ secrets.TESTING_TURNSTILE_SECRET_KEY }}
-          TESTING_TURNSTILE_SITE_KEY: ${{ secrets.TESTING_TURNSTILE_SITE_KEY }}
+          TESTING_SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          TESTING_TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TESTING_TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
         run: |
           python - <<'PYTHON'
           import os
@@ -70,9 +70,9 @@ jobs:
           if not entries or any(not re.fullmatch(r'(0[1-9]|1[0-5])-[0-9]{6}-[0-9]{3}', item) for item in entries):
               raise SystemExit('Set the testing environment secret TESTING_LOGIN_ALLOWLIST to whitespace-separated enrollment IDs.')
           if not os.environ['TESTING_SECRET_KEY']:
-              raise SystemExit('Set the testing environment secret TESTING_SECRET_KEY.')
+              raise SystemExit('Set the SECRET_KEY secret in the testing environment.')
           if not os.environ['TESTING_TURNSTILE_SECRET_KEY'] or not os.environ['TESTING_TURNSTILE_SITE_KEY']:
-              raise SystemExit('Set the testing environment Turnstile secrets.')
+              raise SystemExit('Set TURNSTILE_SECRET_KEY and TURNSTILE_SITE_KEY in the testing environment.')
           PYTHON
           printf 'TESTING_LOGIN_ALLOWLIST=%s\n' "$(xargs <<< "$TESTING_LOGIN_ALLOWLIST")" >> "$GITHUB_ENV"
 
@@ -132,18 +132,18 @@ jobs:
             LMS_MCP_ALLOWED_ACCOUNTS=${{ secrets.TESTING_LMS_MCP_ACCOUNT_ID }}
             LMS_MCP_PROXY_HOSTS=${{ vars.TESTING_LMS_MCP_PROXY_HOSTS }}
             LMS_MCP_RAM_DIR=/mcp-ram
-            SECRET_KEY=${{ secrets.TESTING_SECRET_KEY }}
-            SCHEDULER_SECRET=${{ secrets.TESTING_SCHEDULER_SECRET }}
-            DISCORD_CLIENT_ID=${{ secrets.TESTING_DISCORD_CLIENT_ID }}
-            DISCORD_CLIENT_SECRET=${{ secrets.TESTING_DISCORD_CLIENT_SECRET }}
-            DISCORD_BOT_TOKEN=${{ secrets.TESTING_DISCORD_BOT_TOKEN }}
-            DISCORD_PUBLIC_KEY=${{ secrets.TESTING_DISCORD_PUBLIC_KEY }}
-            DISCORD_GUILD_ID=${{ secrets.TESTING_DISCORD_GUILD_ID }}
-            DISCORD_LOG_WEBHOOK_URL=${{ secrets.TESTING_DISCORD_LOG_WEBHOOK_URL }}
-            DISCORD_AUTHORIZED_ROLE_ID=${{ secrets.TESTING_DISCORD_AUTHORIZED_ROLE_ID }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            SCHEDULER_SECRET=${{ secrets.SCHEDULER_SECRET }}
+            DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+            DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}
+            DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
+            DISCORD_PUBLIC_KEY=${{ secrets.DISCORD_PUBLIC_KEY }}
+            DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+            DISCORD_LOG_WEBHOOK_URL=${{ secrets.DISCORD_LOG_WEBHOOK_URL }}
+            DISCORD_AUTHORIZED_ROLE_ID=${{ secrets.DISCORD_AUTHORIZED_ROLE_ID }}
             DOWNLOAD_ENCRYPTION_KEY=${{ secrets.TESTING_DOWNLOAD_ENCRYPTION_KEY }}
-            TURNSTILE_SITE_KEY=${{ secrets.TESTING_TURNSTILE_SITE_KEY }}
-            TURNSTILE_SECRET_KEY=${{ secrets.TESTING_TURNSTILE_SECRET_KEY }}
+            TURNSTILE_SITE_KEY=${{ secrets.TURNSTILE_SITE_KEY }}
+            TURNSTILE_SECRET_KEY=${{ secrets.TURNSTILE_SECRET_KEY }}
 
       - name: Route traffic to the deployed revision
         run: gcloud run services update-traffic university-portal-test --project unitrack-testing --region us-central1 --to-latest
