@@ -16,6 +16,7 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.routing import Route
 
+from lms_mcp.client_metadata import TOKEN_AUTH_METHODS
 from lms_mcp.core import ConnectorError, Deadline, SCOPE
 
 
@@ -140,11 +141,9 @@ def build_student_server(runtime):
     app = server.streamable_http_app(streamable_http_path='/mcp', json_response=True, stateless_http=True,
         max_request_body_size=16384, transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True, allowed_hosts=allowed_hosts, allowed_origins=[settings.origin]))
-    # The SDK advertises confidential clients by default. This provider only
-    # registers public clients with PKCE, so discovery must offer that method.
     metadata = build_metadata(auth.issuer_url, None, registration, revocation)
-    metadata.token_endpoint_auth_methods_supported = ['none']
-    metadata.revocation_endpoint_auth_methods_supported = ['none']
+    metadata.token_endpoint_auth_methods_supported = list(TOKEN_AUTH_METHODS)
+    metadata.revocation_endpoint_auth_methods_supported = list(TOKEN_AUTH_METHODS)
     metadata.authorization_response_iss_parameter_supported = True
     metadata.client_id_metadata_document_supported = True
     methods = ['GET', 'OPTIONS']
