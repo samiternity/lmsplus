@@ -4,26 +4,25 @@ import asyncio
 from base64 import urlsafe_b64encode
 from datetime import datetime, timezone
 import hmac
-import json
 import logging
 import time
-from urllib.parse import urlencode
-
-from cryptography.fernet import Fernet, InvalidToken
+from urllib.parse import urlencode, urlsplit
 
 from authlib.common.security import generate_token
 from authlib.common.urls import add_params_to_uri
+from cryptography.fernet import Fernet, InvalidToken
 from mcp.server.auth.provider import (
     AccessToken, AuthorizationCode, AuthorizationParams, AuthorizeError,
     OAuthAuthorizationServerProvider, RefreshToken, RegistrationError, TokenError,
 )
-from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+from mcp.shared.auth import OAuthToken
 
+from lms_mcp.client_metadata import RegisteredClient, TOKEN_AUTH_METHODS, fetch_client_metadata, valid_callback
 from lms_mcp.core import (
     ANTIGRAVITY_CALLBACK, ANTIGRAVITY_CLIENT_ID, PROVIDER_LABELS, ConnectorError, SCOPE,
     callback_provider,
 )
-from lms_mcp.http_security import registration_source
+from lms_mcp.http_security import registration_redirects, registration_source, request_redirect
 from lms_mcp.store import digest
 
 logger = logging.getLogger(__name__)
@@ -33,30 +32,45 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
     def __init__(self, settings, store, owns_account, on_connected=None):
         self.settings, self.store, self.owns_account = settings, store, owns_account
         self.on_connected = on_connected
-        # Derive a separate key for short-lived browser consent requests.
-        self.consent_cipher = Fernet(urlsafe_b64encode(hmac.digest(settings.key, b'mcp-consent-v1', 'sha256')))
+        self.client_secret_cipher = Fernet(urlsafe_b64encode(hmac.digest(settings.key, b'mcp-client-secret-v1', 'sha256')))
 
     async def get_client(self, client_id):
         if client_id == ANTIGRAVITY_CLIENT_ID:
-            return OAuthClientInformationFull(
+            return RegisteredClient(
                 client_id=client_id, client_name=PROVIDER_LABELS['antigravity'],
                 redirect_uris=[ANTIGRAVITY_CALLBACK], token_endpoint_auth_method='none',
                 grant_types=['authorization_code', 'refresh_token'], response_types=['code'], scope=SCOPE)
         record = await asyncio.to_thread(self.store.get, 'mcp_clients/' + digest(client_id))
-        return OAuthClientInformationFull.model_validate(record) if record else None
+        if record:
+            encrypted_secret = record.pop('encrypted_client_secret', None)
+            if encrypted_secret:
+                try:
+                    record['client_secret'] = self.client_secret_cipher.decrypt(encrypted_secret.encode()).decode()
+                except InvalidToken:
+                    return None
+            return RegisteredClient.model_validate(record)
+        if client_id.startswith('https://'):
+            return await fetch_client_metadata(client_id)
+        return None
 
     async def register_client(self, client_info):
-        if (client_info.token_endpoint_auth_method != 'none' or not client_info.redirect_uris
-                or any(not self.settings.allows_callback(str(uri)) for uri in client_info.redirect_uris)
+        redirects = registration_redirects.get()
+        if redirects is None:
+            redirects = [str(uri) for uri in client_info.redirect_uris or []]
+        if (client_info.token_endpoint_auth_method not in TOKEN_AUTH_METHODS or not redirects
+                or any(not valid_callback(uri) for uri in redirects)
                 or set(client_info.grant_types) - {'authorization_code', 'refresh_token'}
                 or (client_info.scope and set(client_info.scope.split()) - {SCOPE})):
-            raise RegistrationError('invalid_client_metadata', 'Use a supported public client with read-only assignment access.')
-        client_info.client_secret = None
+            raise RegistrationError('invalid_client_metadata', 'Use a supported OAuth client with read-only assignment access.')
         # Registration is bounded independently from student account grants.
         day = time.strftime('%Y-%m-%d', time.gmtime())
         quota_key = 'mcp_limits/registration-' + day
         source_key = 'mcp_limits/registration-source-' + digest(day + ':' + registration_source.get())
         client_key = 'mcp_clients/' + digest(client_info.client_id)
+
+        record = dict(client_info.model_dump(mode='json', exclude={'client_secret'}), exact_redirect_uris=redirects)
+        if client_info.client_secret:
+            record['encrypted_client_secret'] = self.client_secret_cipher.encrypt(client_info.client_secret.encode()).decode()
 
         def register(docs):
             quota = docs[quota_key] or {'count': 0}
@@ -65,7 +79,7 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
                 raise RegistrationError('invalid_client_metadata', 'Client registration is temporarily unavailable.')
             quota['count'] += 1
             source['count'] += 1
-            return {quota_key: quota, source_key: source, client_key: client_info.model_dump(mode='json')}, None
+            return {quota_key: quota, source_key: source, client_key: record}, None
 
         await asyncio.to_thread(self.store.run, [quota_key, source_key, client_key], register)
 
@@ -73,44 +87,52 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
         if (params.resource not in (None, self.settings.resource)
                 or set(params.scopes or [SCOPE]) != {SCOPE}):
             raise AuthorizeError('invalid_scope', 'Only read-only assignment access to this connector is available.')
+        # Compare the wire value as well as the SDK's parsed URL.
+        raw = request_redirect.get()
+        registered = getattr(client, 'exact_redirect_uris', None) or [str(uri) for uri in client.redirect_uris or []]
         callback = str(params.redirect_uri)
-        if params.redirect_uri not in (client.redirect_uris or []):
+        if raw:
+            callback = raw[0]
+        elif len(registered) == 1:
+            callback = registered[0]
+        if (raw and len(raw) != 1) or callback not in registered or params.redirect_uri not in (client.redirect_uris or []):
             raise AuthorizeError('invalid_request', 'The callback does not match this client registration.')
-        if not self.settings.allows_callback(callback, pinned=client.client_id == ANTIGRAVITY_CLIENT_ID):
-            raise AuthorizeError('unauthorized_client', 'This app is not enabled for LMS+.')
+        if not valid_callback(callback):
+            raise AuthorizeError('invalid_request', 'Invalid callback URL.')
         provider = callback_provider(callback)
+        expires = time.time() + 300
         request = {
-            'params': params.model_dump(mode='json'), 'client_id': client.client_id,
-            'client_name': PROVIDER_LABELS[provider], 'expires': time.time() + 300,
+            'params': dict(params.model_dump(mode='json'), redirect_uri=callback), 'client_id': client.client_id,
+            'client_name': urlsplit(callback).hostname if provider == 'other' else PROVIDER_LABELS[provider],
+            'expires': expires, 'expires_at': datetime.fromtimestamp(expires, timezone.utc),
         }
-        request_id = self.consent_cipher.encrypt(json.dumps(request).encode()).decode()
-        if len(request_id) > 2400:
-            raise AuthorizeError('invalid_request', 'Authorization request is too large.')
+        request_id = generate_token(48)
+        await asyncio.to_thread(self.store.put, self._consent_key(request_id), request)
         return self.settings.origin + '/connector/authorize?' + urlencode({'request': request_id})
 
+    @staticmethod
+    def _consent_key(request_id):
+        # Reuse the collection with the existing expires_at TTL policy.
+        return 'mcp_consent_used/' + digest(request_id)
+
     def authorization(self, request_id):
-        if not isinstance(request_id, str) or len(request_id) > 2400:
+        if not isinstance(request_id, str) or len(request_id) != 48 or not request_id.isascii():
             return None
-        try:
-            record = json.loads(self.consent_cipher.decrypt(request_id.encode(), ttl=300))
-        except (InvalidToken, ValueError):
-            return None
-        return record if record['expires'] > time.time() else None
+        request = self.store.get(self._consent_key(request_id))
+        return request if request and request.get('expires', 0) > time.time() else None
 
     def approve(self, request_id, user_id, account_id):
         self.settings.check_account(account_id)
         if not self.owns_account(user_id, account_id):
             raise ConnectorError('connection_unavailable', 'This university account is unavailable.')
         code, connection_id = generate_token(48), generate_token(32)
-        pending_key = 'mcp_consent_used/' + digest(request_id)
-        request = self.authorization(request_id)
+        pending_key = self._consent_key(request_id)
         code_key, connection_key = 'mcp_codes/' + digest(code), 'mcp_connections/' + connection_id
         def grant(docs):
-            if docs[pending_key] or not request or request['expires'] <= time.time():
+            request = docs[pending_key]
+            if not request or request.get('expires', 0) <= time.time():
                 raise ConnectorError('connection_unavailable', 'The connection request expired. Start again in your AI app.')
             params = request['params']
-            if not self.settings.allows_callback(params['redirect_uri'], pinned=request['client_id'] == ANTIGRAVITY_CLIENT_ID):
-                raise ConnectorError('connection_unavailable', 'This app is not enabled for LMS+.')
             code_record = dict(params, client_id=request['client_id'], expires_at=time.time() + 120,
                                subject=user_id, connection_id=connection_id)
             code_record['scopes'] = [SCOPE]
@@ -119,23 +141,21 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
                           'client_name': request['client_name'], 'created': time.time(), 'revoked': False,
                           'provider': callback_provider(params['redirect_uri']),
                           'access_hash': None, 'refresh_hash': None, 'resource': self.settings.resource}
-            changes = {pending_key: {'expires_at': datetime.fromtimestamp(request['expires'], timezone.utc)}, code_key: code_record, connection_key: connection}
+            changes = {pending_key: None, code_key: code_record, connection_key: connection}
             redirect = add_params_to_uri(params['redirect_uri'], [(key, value) for key, value in {
                 'code': code, 'state': params.get('state'), 'iss': self.settings.origin}.items() if value is not None])
             return changes, redirect
         return self.store.run([pending_key, code_key, connection_key], grant)
 
     def deny(self, request_id):
-        request = self.authorization(request_id)
-        if not request:
-            raise ConnectorError('connection_unavailable', 'The connection request expired.')
-        key = 'mcp_consent_used/' + digest(request_id)
+        key = self._consent_key(request_id)
 
         def deny_request(docs):
-            if docs[key] or request['expires'] <= time.time():
+            request = docs[key]
+            if not request or request.get('expires', 0) <= time.time():
                 raise ConnectorError('connection_unavailable', 'The connection request expired.')
             params = request['params']
-            return {key: {'expires_at': datetime.fromtimestamp(request['expires'], timezone.utc)}}, add_params_to_uri(
+            return {key: None}, add_params_to_uri(
                 params['redirect_uri'], [(k, v) for k, v in {
                     'error': 'access_denied', 'state': params.get('state'), 'iss': self.settings.origin
                 }.items() if v is not None]
@@ -174,6 +194,9 @@ class AssignmentOAuthProvider(OAuthAuthorizationServerProvider):
         record = await asyncio.to_thread(self.store.get, code_key)
         if not record:
             raise TokenError('invalid_grant', 'Authorization code is unavailable.')
+        expected = [record['redirect_uri']] if record['redirect_uri_provided_explicitly'] else None
+        if request_redirect.get() != expected:
+            raise TokenError('invalid_grant', 'The callback does not match the authorization request.')
         connection_key = 'mcp_connections/' + record['connection_id']
         access, refresh = generate_token(48), generate_token(48)
         token_keys = ['mcp_tokens/' + digest(access), 'mcp_tokens/' + digest(refresh)]

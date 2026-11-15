@@ -17,6 +17,7 @@ google-cloud-tasks>=2.14.0
 Flask-WTF==1.2.1
 Flask-Limiter==3.3.1
 mcp==2.3.0
+httpx==0.28.1
 uvicorn==0.54.0
 a2wsgi==1.10.10
 pypdfium2==5.14.0

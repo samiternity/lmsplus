@@ -105,8 +105,10 @@ Keep these names out of repository-wide secrets so a missing testing value
 cannot fall back to a shared credential. Keep the existing testing `SECRET_KEY`
 stable when it is used to encrypt stored CMS credentials.
 
-For MCP consent replay records, configure Firestore TTL on the `expires_at` field
-of the `mcp_consent_used` collection group.
+Configure Firestore TTL on the `expires_at` field of the `mcp_consent_used`
+collection group in both environments to remove expired pending consent
+requests. Keep `LMS_MCP_DOWNLOAD_KEY` stable across deployments. Rotating it
+requires confidential OAuth clients to register again.
 
 ### Other integrations
 

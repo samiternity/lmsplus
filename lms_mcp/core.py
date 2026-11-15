@@ -101,7 +101,6 @@ class ConnectorSettings:
     accounts: frozenset[str] | None
     proxy_hosts: tuple[str, ...] = ()
     file_hosts: tuple[str, ...] = ("lms.bahria.edu.pk",)
-    callback_urls: tuple[str, ...] = (CLAUDE_CALLBACK, CHATGPT_CALLBACK)
 
     @property
     def resource(self):
@@ -128,20 +127,6 @@ class ConnectorSettings:
             raise ValueError("MCP proxy hosts must be explicit Cloud Run hostnames")
         return cls(checked_origin(os.environ.get("APP_URL", "")),
                    checked_origin(os.environ.get("LMS_MCP_WORKER_URL", "")), key, accounts, proxy_hosts)
-
-    def allows_callback(self, callback, *, pinned=False):
-        if callback in self.callback_urls:
-            return True
-        if callback == VSCODE_CALLBACK or (pinned and callback == ANTIGRAVITY_CALLBACK):
-            return True
-        try:
-            parsed = urlsplit(callback)
-            port = parsed.port
-            return (parsed.scheme == 'http' and port is not None and port > 0
-                    and parsed.netloc in {f'{host}:{port}' for host in ('localhost', '127.0.0.1', '[::1]')}
-                    and not parsed.query and not parsed.fragment)
-        except ValueError:
-            return False
 
     def allows_account(self, account_id):
         return (bool(account_id)

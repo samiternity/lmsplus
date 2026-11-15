@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from threading import Event
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -119,7 +120,7 @@ def tool(env, token, method='tools/call'):
             'arguments': {'course': 'Networks'}} if method == 'tools/call' else {}})
 
 
-def test_discovery_unauthenticated_challenge_and_callback_allowlist(environment):
+def test_discovery_unauthenticated_challenge_and_callback_validation(environment):
     env = environment
     response = env.client.post('/mcp', json={})
     assert response.status_code == 401
@@ -132,10 +133,10 @@ def test_discovery_unauthenticated_challenge_and_callback_allowlist(environment)
     authorization_server = env.client.get('/.well-known/oauth-authorization-server')
     assert authorization_server.status_code == 200
     discovery = authorization_server.json()
-    assert discovery['token_endpoint_auth_methods_supported'] == ['none']
-    assert discovery['revocation_endpoint_auth_methods_supported'] == ['none']
+    assert discovery['token_endpoint_auth_methods_supported'] == ['none', 'client_secret_basic', 'client_secret_post']
+    assert discovery['revocation_endpoint_auth_methods_supported'] == ['none', 'client_secret_basic', 'client_secret_post']
     assert discovery['code_challenge_methods_supported'] == ['S256']
-    response = env.client.post('/register', json={'redirect_uris': ['https://evil.test/callback'], 'token_endpoint_auth_method': 'none'})
+    response = env.client.post('/register', json={'redirect_uris': ['https://user@evil.test/callback'], 'token_endpoint_auth_method': 'none'})
     assert response.status_code == 400
 
 
@@ -272,7 +273,7 @@ def test_tool_timing_event_is_safe_and_matches_metadata(environment, monkeypatch
     assert metrics['stage_elapsed_ms'] == result['_meta']['lmsplus']['stage_elapsed_ms']
 
 
-def test_public_oauth_limits_and_stateless_consent(monkeypatch):
+def test_public_oauth_limits_and_single_use_consent(monkeypatch):
     import asyncio
     from mcp.server.auth.provider import AuthorizationParams, RegistrationError
     from mcp.shared.auth import OAuthClientInformationFull
@@ -316,8 +317,11 @@ def test_public_oauth_limits_and_stateless_consent(monkeypatch):
         ))
         request_id = parse_qs(urlsplit(redirect).query)['request'][0]
         assert oauth.authorization(request_id)['client_id'] == client.client_id
-        assert set(store.docs) == keys
+        pending_key, = set(store.docs) - keys
+        assert pending_key.startswith('mcp_consent_used/')
+        assert store.get(pending_key)['expires_at'].timestamp() == pytest.approx(time.time() + 300, abs=2)
         assert parse_qs(urlsplit(oauth.approve(request_id, 'user', 'account')).query)['code']
+        assert store.get(pending_key) is None
         from lms_mcp.core import ConnectorError
         with pytest.raises(ConnectorError):
             oauth.approve(request_id, 'user', 'account')
