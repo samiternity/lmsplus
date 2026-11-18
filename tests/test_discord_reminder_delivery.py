@@ -176,7 +176,7 @@ def test_failed_new_assignment_delivery_remains_retryable(engine):
         assert service.check_and_notify('u1', [assignment(5)])['new'] == 1
 
 
-@pytest.mark.parametrize('days,kind', [(0, 'due_24h'), (2, 'due_3d'), (-2, 'overdue')])
+@pytest.mark.parametrize('days,kind', [(0, 'due_24h'), (2, 'due_3d')])
 def test_failed_new_alert_does_not_block_deadline_alert_or_its_own_retry(engine, days, kind):
     service, state = engine
     with patch('app.services.assignment_notification_service.get_notification_service') as delivery:
@@ -197,6 +197,21 @@ def test_failed_new_alert_does_not_block_deadline_alert_or_its_own_retry(engine,
         counts = service.check_and_notify('u1', [assignment(days)])
         assert counts['new'] == 1
         assert counts[kind] == 0
+
+
+def test_unknown_missed_assignment_retries_only_its_overdue_alert(engine):
+    service, state = engine
+    with patch('app.services.assignment_notification_service.get_notification_service') as delivery:
+        send = delivery.return_value.send_notification
+        send.return_value = None
+        assert not any(service.check_and_notify('u1', [assignment(-2)]).values())
+        assert send.call_count == 1
+        assert send.call_args.kwargs['notification_type'] == NotificationType.ASSIGNMENT_OVERDUE
+        send.return_value = Mock()
+        counts = service.check_and_notify('u1', [assignment(-2)])
+        assert counts['new'] == 0
+        assert counts['overdue'] == 1
+        assert 'a1_overdue' in state['notified_deadlines']
 
 
 def test_queue_failure_falls_back_to_confirmed_delivery():

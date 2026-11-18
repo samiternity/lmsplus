@@ -2158,7 +2158,8 @@ class LMSScraperService:
             return []
     
     def scrape_course_assignments(self, account_id: str, semester_code: Optional[str],
-                                  course_code: str) -> List[LMSAssignment]:
+                                  course_code: str, *, strict: bool = False,
+                                  expected_course_name: Optional[str] = None) -> List[LMSAssignment]:
         """
         Scrape assignments for a specific course.
         Mimics selecting a course from the dropdown on the original LMS site.
@@ -2197,6 +2198,8 @@ class LMSScraperService:
             
             # Check if redirected to login
             if self._requires_cms_authentication(response):
+                if strict:
+                    raise LMSAuthenticationRequired('University authentication is required')
                 log_warning(f"Redirected to CMS login when accessing course {course_code}",
                            account_id=account_id, operation="scrape_course_assignments")
                 return []
@@ -2205,10 +2208,13 @@ class LMSScraperService:
             soup = self._parse_html(response.text, self.assignments_url)
             
             # Extract course information from the selected dropdown option
-            course_info = self._extract_selected_course_info(soup, course_code)
+            if strict and response.status_code != 200:
+                raise LMSNetworkError('University assignment request failed')
+            course_info = self._extract_selected_course_info(
+                soup, course_code, expected_course_name=expected_course_name, strict=strict)
             
             # Extract assignments with course context
-            assignments = self.parse_assignment_data(soup, course_info=course_info)
+            assignments = self.parse_assignment_data(soup, course_info=course_info, strict=strict)
             
             # Log what we found
             log_debug(f"Parsed {len(assignments)} assignments from HTML",
@@ -2223,6 +2229,9 @@ class LMSScraperService:
         except CMSSurveyRequiredError:
             raise
         except Exception as e:
+            if strict:
+                # A failed scrape must not masquerade as a course with no work.
+                raise
             log_error(f"Error scraping assignments for course {course_code}: {e}",
                      account_id=account_id, operation="scrape_course_assignments",
                      exc_info=True)
@@ -2774,7 +2783,9 @@ class LMSScraperService:
         except:
             return ""
     
-    def _extract_selected_course_info(self, soup: BeautifulSoup, course_code: str) -> Dict[str, str]:
+    def _extract_selected_course_info(self, soup: BeautifulSoup, course_code: str,
+                                      expected_course_name: Optional[str] = None,
+                                      strict: bool = False) -> Dict[str, str]:
         """
         Extract course information from the selected dropdown option.
         
@@ -2790,10 +2801,25 @@ class LMSScraperService:
             course_select = soup.find('select', {'id': 'courseId'}) or soup.find('select', {'name': 'courseName'})
             
             if course_select:
+                from app.utils.assignment_identity import normalize_label
+                options = course_select.find_all('option')
+                matches = [option for option in options
+                           if unquote(option.get('value', '').strip()) == unquote(course_code.strip())]
+                if strict:
+                    expected = normalize_label(expected_course_name)
+                    named = [option for option in options if normalize_label(option.get_text(strip=True)) == expected]
+                    if not expected or len(named) != 1:
+                        raise LMSParsingError('Course name is missing or ambiguous')
+                    selected = course_select.find_all('option', selected=True)
+                    if len(selected) > 1 or (selected and selected[0] is not named[0]):
+                        raise LMSParsingError('University returned a different course')
+                    if not selected and (len(matches) != 1 or matches[0] is not named[0]):
+                        raise LMSParsingError('University course context could not be verified')
+                    if expected == normalize_label(unquote(named[0].get('value', ''))):
+                        raise LMSParsingError('Course label is a transport token')
+                    return {'course_code': course_code, 'course_name': expected_course_name.strip()}
                 # Find the selected option or the option with matching value
-                selected_option = course_select.find('option', {'value': course_code, 'selected': True})
-                if not selected_option:
-                    selected_option = course_select.find('option', {'value': course_code})
+                selected_option = matches[0] if len(matches) == 1 else None
                 
                 if selected_option:
                     course_name = selected_option.get_text(strip=True)
@@ -2804,17 +2830,22 @@ class LMSScraperService:
                     }
             
             # Fallback: use course code as name
-            logger.debug(f"Could not extract course name from dropdown, using code: {course_code}")
+            # Keep unknown labels empty instead of exposing the historical token fallback.
+            if strict:
+                raise LMSParsingError('University course dropdown is missing')
+            logger.debug('Could not extract a course name from dropdown')
             return {
                 'course_code': course_code,
-                'course_name': course_code
+                'course_name': ''
             }
             
         except Exception as e:
+            if strict:
+                raise
             logger.warning(f"Error extracting course info from dropdown: {e}")
             return {
                 'course_code': course_code,
-                'course_name': course_code
+                'course_name': ''
             }
     
     def _extract_course_info(self, cells, column_mapping: Dict[str, int]) -> Dict[str, str]:

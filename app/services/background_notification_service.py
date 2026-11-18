@@ -278,6 +278,11 @@ def _check_assignments(user, account, cms_session=None) -> int:
     from app.services.lms_service import LMSService
     from app.services.assignment_notification_service import get_assignment_notification_service
     from app.models.lms_models import LMSAssignment
+    from app.utils.data_manager import data_manager
+
+    unified = data_manager.get_unified_dashboard(account.account_id) or {}
+    previous_snapshot = (unified.get('assignment_tracking_migration_snapshot') or
+                         unified.get('assignments_snapshot'))
 
     dashboard_service = LMSDashboardService(LMSService(provided_cms_session=cms_session))
     
@@ -290,7 +295,8 @@ def _check_assignments(user, account, cms_session=None) -> int:
     except Exception as e:
         raise Exception(f"Dashboard scraper failed: {e}")
         
-    if not snapshot or 'pending' not in snapshot:
+    if (not snapshot or 'pending' not in snapshot or snapshot.get('error') or
+            snapshot.get('failed_courses') or snapshot.get('warning')):
         raise Exception("Dashboard scraper returned invalid/empty snapshot")
         
     # 2. Extract actionable assignments (Pending + Missed)
@@ -300,7 +306,6 @@ def _check_assignments(user, account, cms_session=None) -> int:
     
     if not actionable_dicts:
         logger.info(f"[{account.account_id}] No actionable assignments found for notifications")
-        return 0
         
     # 3. Convert to models and run notification engine
     try:
@@ -312,13 +317,16 @@ def _check_assignments(user, account, cms_session=None) -> int:
             assignments=assignments,
             user=user,
             account_id=account.account_id,
-            send_push=True
+            send_push=True,
+            snapshot=snapshot,
+            previous_snapshot=previous_snapshot,
+            complete_scrape=True,
         )
         logger.info(f"[{account.account_id}] Notification engine sent {counts} alerts")
         return sum(counts.values()) if counts else 0
     except Exception as e:
         logger.warning(f"[{account.account_id}] Notification engine failed: {e}", exc_info=True)
-        return 0
+        raise
 
 def check_cached_urgent_assignments_only() -> str:
     """Lightweight check to process cached urgent assignments only."""
@@ -358,7 +366,8 @@ def check_cached_urgent_assignments_only() -> str:
         # Load unified persistent assignments snapshot from data_manager
         unified = data_manager.get_unified_dashboard(account_id) or {}
         snapshot = unified.get('assignments_snapshot')
-        if not snapshot or 'pending' not in snapshot:
+        if (not snapshot or 'pending' not in snapshot or snapshot.get('error') or
+                snapshot.get('failed_courses') or snapshot.get('warning')):
             logger.info(f"[{account_id}] No unified snapshot found — skipping urgent check")
             continue
 
@@ -380,7 +389,8 @@ def check_cached_urgent_assignments_only() -> str:
             user=user,
             account_id=account_id,
             send_push=True,
-            urgent_only=True
+            urgent_only=True,
+            snapshot=snapshot,
         )
 
         total_urgent_pushed += sum(counts.values()) if counts else 0
