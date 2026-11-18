@@ -16,7 +16,8 @@ from app.services.lms_dashboard_service import LMSDashboardService
 from app.services.lms_background_service import LMSBackgroundService
 from app.services.lms_scraper_service import LMSScraperService, LMSParsingError
 from app.utils.assignment_identity import (
-    assignment_identity, identity_index, migrate_tracking, normalize_label, assignment_snapshot_payload,
+    assignment_identity, assignment_title_identity, identity_index, migrate_tracking,
+    normalize_label, assignment_snapshot_payload,
 )
 from app.utils.assignment_categorization import categorize_assignments
 
@@ -503,7 +504,7 @@ def test_submitted_and_missed_never_get_new_alert(storage, engine, submitted):
 def test_collisions_block_migration_and_skip_v2_alerts(storage, engine):
     service, send = engine
     first, second = assignment(), assignment(token='other')
-    second.title = 'Conflicting row'
+    second.title = first.title
     assert identity_index('account', snapshot(first, second))[1] == 2
     with pytest.raises(ValueError, match='invalid assignment metadata'):
         run(service, [first, second])
@@ -511,6 +512,119 @@ def test_collisions_block_migration_and_skip_v2_alerts(storage, engine):
     run(service, [first])
     assert not any(run(service, [first, second]).values())
     send.assert_not_called()
+
+
+def test_reused_display_numbers_with_different_titles_are_valid_assignments(storage, dashboard):
+    first, second = assignment(token='first'), assignment(token='second')
+    first.title, second.title = 'Assignment 01', 'CCP'
+    indexed, invalid = identity_index('account', snapshot(first, second))
+    assert invalid == 0
+    assert len(indexed) == 2
+    dashboard.lms_service.scraper_service.scrape_course_assignments.return_value = [first, second]
+    result = dashboard._fetch_and_cache_assignments('account', 'pending_assignments:account')
+    assert not result.get('error')
+    assert result['total_pending'] == 2
+    assert {row['title'] for row in storage[0]['assignments_snapshot']['pending']} == {'Assignment 01', 'CCP'}
+
+
+def test_legacy_migration_preserves_reminders_for_reused_numbers():
+    first, second = assignment(token='first', days=2), assignment(token='second', days=2)
+    first.title, second.title = 'Assignment 01', 'CCP'
+    old = snapshot(first, second)
+    first.assignment_id, second.assignment_id = 'changed-first', 'changed-second'
+    legacy = {'notified_deadlines': {'first_3d': '2026-11-18T12:00:00', 'second_3d': '2026-11-18T13:00:00'}}
+    migrated = migrate_tracking('account', legacy, snapshot(first, second), old)
+    assert len(migrated['known_assignments']) == 2
+    for row, timestamp in [(first, '2026-11-18T12:00:00'), (second, '2026-11-18T13:00:00')]:
+        key = assignment_title_identity('account', 'Fall 2026', row.to_dict())
+        assert migrated['notified_deadlines'][f'{key}_3d'] == timestamp
+
+
+def test_new_work_reusing_a_known_number_does_not_replay_existing_work(storage, engine):
+    service, send = engine
+    old = assignment(token='old')
+    old.title = 'Assignment 01'
+    run(service, [old])
+    previous = snapshot(old)
+    new = assignment(token='new')
+    new.title = 'CCP'
+    old.assignment_id = 'changed-old'
+    assert run(service, [old, new], previous=previous)['new'] == 1
+    assert send.call_args.kwargs['message'] == 'CCP has been posted'
+    assert run(service, [old, new])['new'] == 0
+    assert run(service, [new])['new'] == 0
+    third = assignment(token='third')
+    third.title = 'Another report'
+    assert run(service, [third])['new'] == 1
+    assert run(service, [third])['new'] == 0
+
+
+def test_reused_number_transition_keeps_delivered_deadline_reminders(storage, engine):
+    service, send = engine
+    old = assignment(token='old', days=2)
+    old.title = 'Assignment 01'
+    assert run(service, [old])['due_3d'] == 1
+    previous = snapshot(old)
+    new = assignment(token='new', days=2)
+    new.title = 'CCP'
+    send.reset_mock()
+    counts = run(service, [old, new], previous=previous)
+    assert counts['new'] == 1
+    assert counts['due_3d'] == 1
+    assert all('CCP' in call.kwargs['message'] for call in send.call_args_list)
+    assert not any(run(service, [old, new]).values())
+
+
+def test_failed_number_reconciliation_keeps_durable_aliases_for_retry(storage, engine, dashboard):
+    state, manager = storage
+    service, send = engine
+    old = assignment(token='old', days=2)
+    old.title = 'Assignment 01'
+    run(service, [old])
+    state['assignments_snapshot'] = snapshot(old)
+    new = assignment(token='new', days=2)
+    new.title = 'CCP'
+    dashboard.lms_service.scraper_service.scrape_course_assignments.return_value = [old, new]
+    user = SimpleNamespace(id='user')
+    account = SimpleNamespace(account_id='account', cms_username='test', cms_password='test')
+    save = manager.save_unified_dashboard.side_effect
+    fail = [True]
+
+    def save_with_failure(account_id, payload, **kwargs):
+        if 'assignment_tracking_v2' in payload and fail[0]:
+            fail[0] = False
+            return False
+        return save(account_id, payload, **kwargs)
+
+    manager.save_unified_dashboard.side_effect = save_with_failure
+    send.reset_mock()
+    with patch('app.services.lms_dashboard_service.LMSDashboardService', return_value=dashboard), \
+         patch('app.services.lms_service.LMSService'), \
+         patch('app.services.assignment_notification_service.get_assignment_notification_service', return_value=service):
+        with pytest.raises(RuntimeError, match='identity reconciliation'):
+            _check_assignments(user, account)
+        checkpoint = state['assignment_tracking_migration_snapshot']
+        assert checkpoint['all_assignments'][0]['title'] == 'Assignment 01'
+        send.assert_not_called()
+        assert _check_assignments(user, account) == 2
+        assert state['assignment_tracking_migration_snapshot'] is None
+        assert all('CCP' in call.kwargs['message'] for call in send.call_args_list)
+
+
+def test_urgent_checks_can_use_checkpointed_v2_aliases_without_replaying_old_reminders(storage, engine):
+    service, send = engine
+    old = assignment(token='old', days=-2)
+    old.title = 'Assignment 01'
+    assert run(service, [old])['overdue'] == 1
+    previous = snapshot(old)
+    new = assignment(token='new', days=-2)
+    new.title = 'CCP'
+    send.reset_mock()
+    counts = service.check_and_notify('user', [old, new], account_id='account', urgent_only=True,
+                                     snapshot=snapshot(old, new), previous_snapshot=previous)
+    assert counts['new'] == 0
+    assert counts['overdue'] == 1
+    assert send.call_args.kwargs['message'] == 'CCP deadline has passed'
 
 
 def test_urgent_check_uses_legacy_until_fresh_migration(storage, engine):

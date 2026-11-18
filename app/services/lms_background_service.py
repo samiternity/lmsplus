@@ -474,7 +474,7 @@ class LMSBackgroundService:
                 from app.utils.data_manager import data_manager
                 unified = data_manager.get_unified_dashboard(account_id) or {}
                 if not data_manager.save_unified_dashboard(account_id, {
-                    **assignment_snapshot_payload(unified, cache_data),
+                    **assignment_snapshot_payload(unified, cache_data, account_id),
                     'last_updated': datetime.utcnow().isoformat() + 'Z',
                     'legacy_migrated': True
                 }, merge=True):

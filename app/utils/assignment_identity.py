@@ -51,12 +51,25 @@ def snapshot_rows(snapshot):
     return snapshot.get('all_assignments', snapshot.get('pending', []) + snapshot.get('missed', []))
 
 
-def assignment_snapshot_payload(unified, snapshot):
+def assignment_title_identity(account_id, semester_name, row):
+    """Disambiguate reused display numbers without using transport tokens."""
+    base = assignment_identity(account_id, semester_name, row)
+    title = normalize_label(row.get('title'))
+    if not base or not title:
+        return None
+    return base + '~' + hashlib.sha256(title.encode()).hexdigest()
+
+
+def assignment_snapshot_payload(unified, snapshot, account_id=None):
     """Checkpoint legacy aliases in the same write that replaces their snapshot."""
     payload = {'assignments_snapshot': snapshot}
     previous = unified.get('assignments_snapshot')
+    tracking = unified.get('assignment_tracking_v2') or {}
+    needs_checkpoint = tracking.get('identity_version') != 2
+    if previous and not needs_checkpoint and account_id:
+        needs_checkpoint = reconcile_tracking(account_id, tracking, snapshot, previous) != tracking
     if (previous and not unified.get('assignment_tracking_migration_snapshot') and
-            unified.get('assignment_tracking_v2', {}).get('identity_version') != 2):
+            needs_checkpoint):
         # Retain only identity metadata, never assignment attachments or submission data.
         fields = ('assignment_id', 'assignment_no', 'title', 'course_code', 'course_name')
         payload['assignment_tracking_migration_snapshot'] = {
@@ -68,10 +81,18 @@ def assignment_snapshot_payload(unified, snapshot):
     return payload
 
 
-def identity_index(account_id, snapshot):
+def identity_index(account_id, snapshot, known_assignments=()):
     """Return unique identities and a count of unusable or conflicting rows."""
     rows = snapshot_rows(snapshot)
-    keys = [assignment_identity(account_id, snapshot.get('latest_semester_name'), row) for row in rows]
+    keys = [assignment_identity(account_id, snapshot.get('latest_semester_name'), row)
+            if normalize_label(row.get('title')) else None for row in rows]
+    counts = Counter(keys)
+    # LMS display numbers can be reused for different work in one course. Once a
+    # number has needed title disambiguation, keep that scheme even if a row disappears.
+    disambiguated = {key.split('~', 1)[0] for key in known_assignments if '~' in key}
+    keys = [assignment_title_identity(account_id, snapshot.get('latest_semester_name'), row)
+            if key and (counts[key] > 1 or key in disambiguated) else key
+            for key, row in zip(keys, rows)]
     counts = Counter(keys)
     unique = {key: row for key, row in zip(keys, rows) if key and counts[key] == 1}
     return unique, sum(1 for key in keys if not key or counts[key] > 1)
@@ -87,6 +108,47 @@ def notification_timestamp(record):
         return parsed
     except (ValueError, TypeError):
         return None
+
+
+def _copy_reminders(source_id, target_id, source_deadlines, target_deadlines):
+    for kind in ('new', '24h', '3d', 'overdue'):
+        source = source_deadlines.get(f'{source_id}_{kind}')
+        timestamp = notification_timestamp(source)
+        if timestamp is None:
+            continue
+        destination = f'{target_id}_{kind}'
+        existing = target_deadlines.get(destination)
+        existing_time = notification_timestamp(existing)
+        if existing_time is None or timestamp > existing_time:
+            record = deepcopy(source)
+            # All reminder comparisons use naive PKT, including legacy timestamps.
+            if isinstance(record, str):
+                record = timestamp.isoformat()
+            else:
+                record['last_notified'] = timestamp.isoformat()
+            target_deadlines[destination] = record
+
+
+def reconcile_tracking(account_id, tracking, snapshot, previous_snapshot):
+    """Carry known work and reminders forward when its number becomes ambiguous."""
+    previous = previous_snapshot or {}
+    term = snapshot.get('latest_semester_name')
+    if not term or normalize_label(previous.get('latest_semester_name')) != normalize_label(term):
+        return tracking
+    known = set(tracking.get('known_assignments', []))
+    current, _ = identity_index(account_id, snapshot, known)
+    old, _ = identity_index(account_id, previous, known)
+    by_title = {assignment_title_identity(account_id, term, row): key for key, row in current.items()}
+    result = deepcopy(tracking)
+    for old_key, row in old.items():
+        key = by_title.get(assignment_title_identity(account_id, term, row))
+        if key and key != old_key and old_key in known:
+            known.add(key)
+            _copy_reminders(old_key, key, tracking.get('notified_deadlines', {}),
+                            result.setdefault('notified_deadlines', {}))
+    if known != set(tracking.get('known_assignments', [])):
+        result['known_assignments'] = sorted(known)
+    return result
 
 
 def migrate_tracking(account_id, legacy, snapshot, previous_snapshot):
@@ -110,16 +172,31 @@ def migrate_tracking(account_id, legacy, snapshot, previous_snapshot):
         for row in current.values():
             by_code[row.get('course_code')].add(row['course_name'])
         old_keys = []
+        current_by_title = {assignment_title_identity(account_id, snapshot.get('latest_semester_name'), row): key
+                            for key, row in current.items()}
+        current_bases = defaultdict(list)
+        for key, row in current.items():
+            current_bases[assignment_identity(account_id, snapshot.get('latest_semester_name'), row)].append(key)
+        repaired_rows = []
         for row in old_rows:
             repaired = dict(row)
             if (not normalize_label(row.get('course_name')) or
                     normalize_label(row.get('course_name')) == normalize_label(row.get('course_code'))):
                 names = by_code.get(row.get('course_code'), set())
                 repaired['course_name'] = next(iter(names)) if len(names) == 1 else ''
-            old_keys.append(assignment_identity(account_id, snapshot.get('latest_semester_name'), repaired))
+            repaired_rows.append(repaired)
+            old_keys.append(assignment_title_identity(account_id, snapshot.get('latest_semester_name'), repaired))
         counts = Counter(old_keys)
-        for key, row in zip(old_keys, old_rows):
-            if key in current and counts[key] == 1:
+        old_bases = Counter(assignment_identity(account_id, snapshot.get('latest_semester_name'), row)
+                            for row in repaired_rows)
+        for title_key, row, repaired in zip(old_keys, old_rows, repaired_rows):
+            key = current_by_title.get(title_key)
+            if not key:
+                base = assignment_identity(account_id, snapshot.get('latest_semester_name'), repaired)
+                candidates = current_bases.get(base, [])
+                if base and old_bases[base] == 1 and len(candidates) == 1:
+                    key = candidates[0]
+            if key and counts[title_key] == 1:
                 aliases[legacy_assignment_id(row)].add(key)
 
     deadlines = {}
@@ -127,19 +204,5 @@ def migrate_tracking(account_id, legacy, snapshot, previous_snapshot):
         if len(keys) != 1:
             continue
         key = next(iter(keys))
-        for kind in ('new', '24h', '3d', 'overdue'):
-            source = legacy.get('notified_deadlines', {}).get(f'{alias}_{kind}')
-            timestamp = notification_timestamp(source)
-            if timestamp is None:
-                continue
-            destination = f'{key}_{kind}'
-            existing = deadlines.get(destination)
-            if existing is None or timestamp > notification_timestamp(existing):
-                record = deepcopy(source)
-                # All reminder comparisons use naive PKT, including legacy timestamps.
-                if isinstance(record, str):
-                    record = timestamp.isoformat()
-                else:
-                    record['last_notified'] = timestamp.isoformat()
-                deadlines[destination] = record
+        _copy_reminders(alias, key, legacy.get('notified_deadlines', {}), deadlines)
     return {'identity_version': 2, 'known_assignments': sorted(current), 'notified_deadlines': deadlines}

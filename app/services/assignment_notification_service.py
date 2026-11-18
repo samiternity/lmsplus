@@ -13,7 +13,8 @@ from app.services.notification_service import get_notification_service
 from app.models.notification_models import NotificationType
 from app.utils.assignment_categorization import submission_cutoff
 from app.utils.assignment_identity import (
-    assignment_identity, identity_index, migrate_tracking, normalize_label, notification_timestamp,
+    assignment_title_identity, identity_index, migrate_tracking, normalize_label,
+    notification_timestamp, reconcile_tracking,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,9 +210,16 @@ class AssignmentNotificationService:
             validation_snapshot = dict(snapshot)
             if not use_v2 and not complete_scrape and not snapshot.get('latest_semester_name'):
                 validation_snapshot['latest_semester_name'] = 'legacy snapshot'
-            valid_identities, invalid = identity_index(tracking_key, validation_snapshot)
+            valid_identities, invalid = identity_index(tracking_key, validation_snapshot,
+                                                       tracking_data.get('known_assignments', []))
             if invalid:
                 logger.warning('Skipping %d invalid or conflicting assignment identities', invalid)
+            if use_v2 and previous_snapshot:
+                reconciled = reconcile_tracking(tracking_key, tracking_data, snapshot, previous_snapshot)
+                if reconciled != tracking_data:
+                    if not self._save_tracked_assignments(tracking_key, reconciled):
+                        raise RuntimeError('Failed to save assignment identity reconciliation')
+                    tracking_data = reconciled
             if complete_scrape and not urgent_only and not use_v2:
                 if invalid or not snapshot.get('latest_semester_name'):
                     raise ValueError('Cannot migrate invalid assignment metadata')
@@ -223,6 +231,10 @@ class AssignmentNotificationService:
                 use_v2 = True
         elif complete_scrape or use_v2:
             raise ValueError('Semantic assignment tracking requires snapshot metadata')
+        valid_by_title = {
+            assignment_title_identity(tracking_key, validation_snapshot.get('latest_semester_name'), row): key
+            for key, row in valid_identities.items()
+        } if snapshot is not None else {}
         initial_known = set(tracking_data.get('known_assignments', []))
         known_assignments = set(initial_known)
         initial_notified = deepcopy(tracking_data.get('notified_deadlines', {}))
@@ -247,13 +259,12 @@ class AssignmentNotificationService:
                 notification_assignment_id = assignment_id
                 if snapshot is not None:
                     row = assignment.to_dict() if hasattr(assignment, 'to_dict') else assignment
-                    validation_id = assignment_identity(tracking_key, validation_snapshot.get('latest_semester_name'), row)
-                    if validation_id not in valid_identities:
+                    validation_id = valid_by_title.get(assignment_title_identity(
+                        tracking_key, validation_snapshot.get('latest_semester_name'), row))
+                    if not validation_id:
                         continue
                 if use_v2:
-                    assignment_id = assignment_identity(tracking_key, snapshot.get('latest_semester_name'), row)
-                    if assignment_id not in valid_identities:
-                        continue
+                    assignment_id = validation_id
                 
                 # Use robust categorization to determine if it's submitted
                 from app.utils.assignment_categorization import categorize_assignment

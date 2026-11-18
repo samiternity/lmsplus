@@ -492,7 +492,7 @@ class LMSDashboardService:
                     log_warning(f"Preserving existing assignments snapshot for {account_id}: {len(failed_courses)} course(s) failed to scrape", account_id=account_id)
                 elif has_changed:
                     payload = {
-                        **assignment_snapshot_payload(unified, result),
+                        **assignment_snapshot_payload(unified, result, account_id),
                         'last_updated': datetime.utcnow().isoformat() + 'Z',
                         'legacy_migrated': True
                     }
