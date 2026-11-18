@@ -86,8 +86,10 @@ class TestLMSDashboardAPIIntegration:
         active_account.account_id = 'acc_123'
         active_account.cms_username = 'test_user'
         active_account.cms_password = 'test_pass'
+        active_account.lms_preferences = {}
         
         user.get_active_account.return_value = active_account
+        user.cms_account = active_account
         
         return user
     
@@ -188,7 +190,7 @@ class TestPendingAssignmentsEndpoint(TestLMSDashboardAPIIntegration):
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 
-                assert data['success'] is True  # Still returns success
+                assert data['success'] is False  # A failed refresh is never a successful empty result.
                 assert 'user_message' in data
                 assert data['error'] == 'Failed to fetch assignments'
     

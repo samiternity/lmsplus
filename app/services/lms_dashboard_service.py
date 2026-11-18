@@ -69,9 +69,10 @@ class LMSDashboardService:
                 # Log performance
                 duration = (datetime.now() - start_time).total_seconds()
                 log_performance("get_pending_widget_force", duration,
-                              account_id=account_id, success=True, from_cache=False)
+                              account_id=account_id,
+                              success=not self._refresh_failed(result), from_cache=False)
                 
-                return result
+                return self._refresh_response(account_id, result)
             
             # Load DIRECTLY from the Single Source of Truth (Firestore Snapshot)
             from app.utils.data_manager import data_manager
@@ -118,7 +119,7 @@ class LMSDashboardService:
             result = self._fetch_and_cache_assignments(account_id, cache_key)
             
             # Return the fresh data
-            return result
+            return self._refresh_response(account_id, result)
         
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
@@ -130,7 +131,42 @@ class LMSDashboardService:
                           account_id=account_id, success=False, error=str(e))
             
             # Return empty result with error
-            return self._empty_result(f"Failed to load assignments: {str(e)}")
+            return self._refresh_response(account_id, self._empty_result('Could not refresh assignments. Please try again.'))
+
+    @staticmethod
+    def _refresh_failed(result: Dict[str, Any]) -> bool:
+        return bool(result.get('error') or result.get('refresh_failed') or
+                    result.get('failed_courses') or result.get('warning'))
+
+    def _refresh_response(self, account_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep presentation fallback separate from fresh scheduler input."""
+        if not self._refresh_failed(result):
+            return result
+        try:
+            from app.utils.data_manager import data_manager
+            unified = data_manager.get_unified_dashboard(account_id, bypass_cache=True) or {}
+            saved = unified.get('assignments_snapshot') or {}
+            if (not self._refresh_failed(saved) and
+                    ('all_assignments' in saved or 'assignments' in saved or 'pending' in saved)):
+                return {
+                    **self._recategorize_cached_data(saved),
+                    'from_cache': True,
+                    'is_stale': True,
+                    'using_saved_snapshot': True,
+                    'refresh_failed': True,
+                    'error': 'Could not refresh assignments.',
+                    'user_message': 'Refresh failed. Showing your last saved assignments. Please try again later.',
+                }
+        except Exception:
+            logger.warning('Could not load saved assignments after a failed refresh', exc_info=True)
+        return {
+            **result,
+            'refreshed_at': None,
+            'using_saved_snapshot': False,
+            'refresh_failed': True,
+            'error': 'Could not refresh assignments.',
+            'user_message': 'Could not load assignments. Please try again later.',
+        }
     
     def get_assignments_summary(self, account_id: str) -> Dict[str, Any]:
         """
@@ -511,7 +547,7 @@ class LMSDashboardService:
             'latest_semester': None,
             'latest_semester_name': None,
             'course_count': 0,
-            'refreshed_at': datetime.utcnow().isoformat() + 'Z',
+            'refreshed_at': None,
             'from_cache': False,
             'is_stale': False,
             'error': message
