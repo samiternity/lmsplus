@@ -199,6 +199,7 @@
     "supabase/config.toml",
     "supabase/functions/proxy/index.ts",
     "tests/js/analytics.test.cjs",
+    "tests/js/assignment_monitor_refresh.test.cjs",
     "tests/js/lecture_zip.test.cjs",
     "tests/js/lecture_zip_frontend.test.cjs",
     "tests/js/lms_course_refresh.test.cjs",

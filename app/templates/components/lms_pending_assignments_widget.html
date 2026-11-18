@@ -960,9 +960,9 @@
         .then(data => {
             widgetState.isLoading = false;
 
-            if (data.success) {
+            if (data.success && !data.error && !data.refresh_failed && !data.warning && !(data.failed_courses || []).length) {
                 widgetState.data = data;
-                widgetState.lastRefreshTime = data.refreshed_at ? new Date(data.refreshed_at) : new Date();
+                widgetState.lastRefreshTime = data.refreshed_at ? new Date(data.refreshed_at) : null;
                 renderAssignments(data);
 
                 // Auto-dismiss slow LMS banner if active
@@ -979,17 +979,26 @@
                     updateAgeIndicator();
                 }
             } else {
+                const message = data.user_message || data.error || 'Could not refresh assignments. Please try again later.';
+                if (!widgetState.data && data.using_saved_snapshot &&
+                    Array.isArray(data.pending) && Array.isArray(data.missed)) {
+                    widgetState.data = data;
+                    widgetState.lastRefreshTime = data.refreshed_at ? new Date(data.refreshed_at) : null;
+                    renderAssignments(data);
+                    updateAgeIndicator(true);
+                }
                 if (typeof window.showLMSBanner === 'function') {
                     window.showLMSBanner(
-                        'LMS Connection Issue',
-                        data.user_message || data.error || 'The university LMS is currently not responding. This is an issue on the university\'s end.',
+                        'Could not refresh assignments',
+                        message,
                         true
                     );
                 }
                 if (forceRefresh) {
-                    completeProgressError(data.error || 'Failed to load assignments', false);
-                } else {
-                    showError(data.error || 'Failed to load assignments');
+                    completeProgressError(message, false);
+                }
+                if (!widgetState.data) {
+                    showError(message);
                 }
             }
         })
@@ -1000,8 +1009,8 @@
 
             if (!isCooldown && typeof window.showLMSBanner === 'function') {
                 window.showLMSBanner(
-                    'LMS Offline',
-                    'Bahria LMS is not responding. This is an issue on university\'s side, not LMS+',
+                    'Could not refresh assignments',
+                    'Refresh failed. Please try again later.',
                     true
                 );
             }
@@ -1011,7 +1020,8 @@
                 if (typeof window.showFlashMessage === 'function') {
                     window.showFlashMessage(error.message || 'Failed to refresh data', 'error');
                 }
-            } else if (!widgetState.data) {
+            }
+            if (!widgetState.data) {
                 showError(error.message || 'Network error occurred. Please retry.');
             }
         })

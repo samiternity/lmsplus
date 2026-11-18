@@ -1,0 +1,52 @@
+name: Diagnose monitor refresh
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PRODUCTION }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Count sanitized assignment refresh errors
+        shell: bash
+        run: |
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="university-portal" AND severity>=DEFAULT AND ("FETCH_ASSIGNMENTS_ERROR" OR "COURSE_FETCH_ERROR" OR "GET_OPTIONS_ERROR" OR "NO_COURSES" OR "NO_SEMESTERS" OR "Error forced refreshing assignments")' --project unitrack-61e76 --freshness=6h --limit=100 --format=json > "$RUNNER_TEMP/monitor-errors.json"
+          python - <<'PYTHON'
+          from pathlib import Path
+          from collections import Counter
+          import json, os
+          reasons = [
+              'Course name is missing or ambiguous',
+              'University returned a different course',
+              'University course context could not be verified',
+              'University course dropdown is missing',
+              'Course label is a transport token',
+              'Assignment identities are ambiguous or missing',
+              'The university assignment table was not recognized',
+              'The university assignment table has no header',
+              'An assignment row has missing columns',
+              'An assignment row could not be parsed',
+              'Readable semester information is required',
+              'Course metadata is missing or ambiguous',
+              'No semesters returned from LMS',
+              'No courses found',
+              'No semesters found',
+              'Failed to get assignment options',
+              'University authentication is required',
+              'Failed to save assignments snapshot',
+              'University assignment request failed',
+              'CMS login failed',
+          ]
+          entries = json.loads((Path(os.environ['RUNNER_TEMP']) / 'monitor-errors.json').read_text())
+          counts = Counter()
+          for entry in entries:
+              text = json.dumps(entry)
+              found = [reason for reason in reasons if reason in text]
+              counts.update(found or ['Other assignment refresh error'])
+          print(json.dumps({'log_entries': len(entries), 'error_reason_counts': dict(counts)}, sort_keys=True))
+          PYTHON

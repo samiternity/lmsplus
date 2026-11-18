@@ -177,7 +177,8 @@ def get_pending_assignments():
             logger.error(f"Error firing assignment notifications: {notif_err}", exc_info=True)
         
         # Check if there's an error in the widget data
-        if widget_data.get('error'):
+        if (widget_data.get('error') or widget_data.get('refresh_failed') or
+                widget_data.get('failed_courses') or widget_data.get('warning')):
             log_warning(f"Widget data contains error: {widget_data.get('error')}",
                        account_id=account_id)
             
@@ -187,11 +188,15 @@ def get_pending_assignments():
                            account_id=account_id, success=False, error=widget_data.get('error'))
             
             # Return partial success with error message
-            return jsonify({
-                'success': True,  # Still return success to show UI
+            # Saved data may be included, but the attempted refresh did not succeed.
+            response = jsonify({
                 **widget_data,
-                'user_message': widget_data.get('error')
-            }), 200
+                'success': False,
+                'error': widget_data.get('error') or 'Could not refresh assignments.',
+                'user_message': widget_data.get('user_message') or 'Could not refresh assignments. Please try again later.',
+            })
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return response, 200
         
         # Log user activity
         log_user_activity("view_pending_assignments", account_id=account_id,

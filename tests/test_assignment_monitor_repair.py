@@ -215,6 +215,82 @@ def test_failed_snapshot_save_does_not_publish_monitor_cache(storage, dashboard)
     dashboard.cache.set.assert_not_called()
 
 
+@pytest.mark.parametrize('failure', ['error', 'partial', 'exception'])
+def test_failed_manual_refresh_returns_saved_assignments_and_original_age(storage, dashboard, failure):
+    state, manager = storage
+    saved = snapshot(assignment(), assignment(2), assignment(3), assignment(4, days=-2), assignment(5, days=-2))
+    saved['refreshed_at'] = '2026-11-17T15:07:00Z'
+    state['assignments_snapshot'] = deepcopy(saved)
+    failed = dashboard._empty_result('Failed to scrape')
+    if failure == 'partial':
+        failed.pop('error')
+        failed['failed_courses'] = ['Networks']
+        failed['warning'] = 'Could not load a course'
+    with patch.object(dashboard, '_fetch_and_cache_assignments', return_value=failed) as fetch:
+        if failure == 'exception':
+            fetch.side_effect = RuntimeError('scrape failed')
+        result = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+    assert result['error']
+    assert result['refresh_failed'] is True
+    assert result['using_saved_snapshot'] is True
+    assert len(result['pending']) == result['total_pending'] == 3
+    assert len(result['missed']) == result['total_missed'] == 2
+    assert result['refreshed_at'] == saved['refreshed_at']
+    assert state['assignments_snapshot'] == saved
+    manager.save_unified_dashboard.assert_not_called()
+
+
+def test_failed_first_load_has_no_fake_freshness(storage, dashboard):
+    failed = dashboard._empty_result('Could not load assignments')
+    with patch.object(dashboard, '_fetch_and_cache_assignments', return_value=failed):
+        result = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+    assert result['refresh_failed'] is True
+    assert result['using_saved_snapshot'] is False
+    assert result['refreshed_at'] is None
+
+
+def test_successful_empty_refresh_is_not_replaced_with_old_assignments(storage, dashboard):
+    storage[0]['assignments_snapshot'] = snapshot(assignment())
+    fresh = dict(snapshot(), refreshed_at='2026-11-18T15:07:00Z')
+    with patch.object(dashboard, '_fetch_and_cache_assignments', return_value=fresh):
+        result = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+    assert result == fresh
+    assert not result.get('refresh_failed')
+
+
+@pytest.mark.parametrize('partial', [False, True])
+def test_failed_refresh_api_never_claims_success_or_advances_version_cookie(storage, dashboard, partial):
+    from flask import Flask
+    from flask_login import LoginManager
+    from app.routes import lms_dashboard_api as api
+
+    app = Flask(__name__)
+    app.config.update(TESTING=True, SECRET_KEY='synthetic', LOGIN_DISABLED=True)
+    LoginManager(app)
+    app.register_blueprint(api.lms_dashboard_api_bp)
+    account = SimpleNamespace(account_id='account', cms_username='test', cms_password='test', lms_preferences={})
+    user = SimpleNamespace(is_authenticated=True, id='user', cms_account=account,
+                           get_active_account=lambda: account, save=Mock())
+    saved = dict(snapshot(assignment(), assignment(2, days=-2)), refreshed_at='2026-11-17T15:07:00Z')
+    storage[0]['assignments_snapshot'] = saved
+    failed = dashboard._empty_result('Scrape failed')
+    if partial:
+        failed.pop('error')
+        failed['warning'] = 'Partial scrape'
+    with patch.object(api, 'current_user', user), patch.object(api, 'dashboard_service', dashboard), \
+         patch.object(dashboard, '_fetch_and_cache_assignments', return_value=failed):
+        response = app.test_client().get('/lms/api/dashboard/pending-assignments?force_refresh=true')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['success'] is False
+    assert data['using_saved_snapshot'] is True
+    assert data['total_pending'] == 1
+    assert data['total_missed'] == 1
+    assert data['refreshed_at'] == saved['refreshed_at']
+    assert 'no-store' in response.headers['Cache-Control']
+    assert not any('lms_snapshot_version' in cookie for cookie in response.headers.getlist('Set-Cookie'))
+
+
 def test_ambiguous_discovery_stops_before_scraping(storage, dashboard):
     dashboard.lms_service.get_assignments_options.return_value['courses'].append({'code': 'other', 'name': ' NETWORKS '})
     assert dashboard._fetch_and_cache_assignments('account', 'key')['error']
