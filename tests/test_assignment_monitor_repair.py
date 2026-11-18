@@ -550,6 +550,28 @@ def test_collisions_block_migration_and_skip_v2_alerts(storage, engine):
     send.assert_not_called()
 
 
+def test_duplicate_submission_rows_allow_migration_without_alerts(storage, engine):
+    state, _ = storage
+    service, send = engine
+    first = assignment(7, token=None, days=-2)
+    second = assignment(7, token='other-submission', days=-2)
+    first.title = second.title = 'LAB 07'
+    first.submission_file = '/submitted-file'
+    indexed, invalid = identity_index('account', snapshot(first, second))
+    assert not indexed and invalid == 2
+
+    second.submission_status = 'submitted'
+    assert not any(run(service, [first, second]).values())
+    tracking = state['assignment_tracking_v2']
+    assert len(tracking['known_assignments']) == 1
+    send.assert_not_called()
+
+    new = assignment(8, token='new-assignment')
+    assert run(service, [second, new])['new'] == 1
+    assert not any(run(service, [first, second, new]).values())
+    send.assert_called_once()
+
+
 @pytest.mark.parametrize('background', [False, True])
 def test_complete_scrape_updates_monitor_even_with_conflicting_notification_ids(storage, dashboard, background, caplog):
     state, _ = storage

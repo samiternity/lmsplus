@@ -85,8 +85,21 @@ def assignment_snapshot_payload(unified, snapshot, account_id=None):
 def identity_index(account_id, snapshot, known_assignments=()):
     """Return unique identities and a count of unusable or conflicting rows."""
     groups, missing = _identity_groups(account_id, snapshot, known_assignments)
-    unique = {key: rows[0] for key, rows in groups.items() if len(rows) == 1}
-    return unique, len(missing) + sum(len(rows) for rows in groups.values() if len(rows) > 1)
+    unique = {}
+    invalid = len(missing)
+    for key, rows in groups.items():
+        if len(rows) == 1 or _all_rows_submitted(rows):
+            unique[key] = rows[0]
+        else:
+            invalid += len(rows)
+    return unique, invalid
+
+
+def _all_rows_submitted(rows):
+    # Duplicate submission rows are safe to baseline as one identity because
+    # none can generate an alert. Require positive evidence on every row.
+    return all(row.get('submission_file') or normalize_label(row.get('submission_status')) == 'submitted'
+               for row in rows)
 
 
 def _identity_groups(account_id, snapshot, known_assignments=()):
@@ -118,7 +131,7 @@ def log_identity_conflicts(account_id, snapshot):
         reason = 'missing_title' if not normalize_label(row.get('title')) else 'missing_context'
         counts[reason] += 1
     for rows in groups.values():
-        if len(rows) < 2:
+        if len(rows) < 2 or _all_rows_submitted(rows):
             continue
         ids = [row.get('assignment_id') for row in rows]
         if not all(ids):
@@ -191,8 +204,10 @@ def migrate_tracking(account_id, legacy, snapshot, previous_snapshot):
     if invalid:
         raise ValueError('Cannot migrate ambiguous assignment identities')
     aliases = defaultdict(set)
-    for key, row in current.items():
-        aliases[legacy_assignment_id(row)].add(key)
+    groups, _ = _identity_groups(account_id, snapshot)
+    for key in current:
+        for row in groups[key]:
+            aliases[legacy_assignment_id(row)].add(key)
 
     previous = previous_snapshot or {}
     previous_term = previous.get('latest_semester_name')
