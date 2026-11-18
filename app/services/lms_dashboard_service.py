@@ -10,6 +10,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.services.lms_cache_service import get_cache_service, LMSCacheService
+from app.utils.assignment_identity import validate_courses, normalize_label, identity_index, assignment_snapshot_payload
 from app.utils.lms_logger import log_info, log_warning, log_debug, log_error, log_performance
 from app.utils.assignment_categorization import (
     parse_deadline,
@@ -280,6 +281,9 @@ class LMSDashboardService:
             
             latest_semester = options['semesters'][0]['code']
             latest_semester_name = options['semesters'][0]['name']
+            if (not normalize_label(latest_semester_name) or
+                    normalize_label(latest_semester_name) == normalize_label(latest_semester)):
+                raise ValueError('Readable semester information is required')
             
             # Get all courses for the semester directly from the options payload
             # The LMS defaults to the latest semester, so options['courses'] is already correct.
@@ -290,6 +294,7 @@ class LMSDashboardService:
                            error_code="NO_COURSES",
                            account_id=account_id, semester=latest_semester)
                 return self._empty_result("No courses found for the current semester")
+            validate_courses(courses)
             
             # Fetch assignments from all courses sequentially.
             # The LMS is too brittle and drops connections when hit with parallel requests,
@@ -303,6 +308,8 @@ class LMSDashboardService:
                         account_id,
                         semester_code=latest_semester,
                         course_code=course['code'],
+                        strict=True,
+                        expected_course_name=course['name'],
                     )
                     if assignments:
                         cache_key_course = f"{latest_semester}:{course['code']}"
@@ -337,6 +344,7 @@ class LMSDashboardService:
                 except Exception as e:
                     log_warning(f"Failed to process assignment: {e}",
                                account_id=account_id)
+                    raise
             
             # Categorize assignments using utility function
             try:
@@ -350,6 +358,7 @@ class LMSDashboardService:
                 # Fallback to empty lists
                 pending = []
                 missed = []
+                raise
             
             # Sort pending by deadline (earliest first)
             try:
@@ -385,6 +394,11 @@ class LMSDashboardService:
             if failed_courses:
                 result['warning'] = f"Could not load {len(failed_courses)} course(s)"
                 result['failed_courses'] = failed_courses
+                # Incomplete results must not update caches or notification baselines.
+                return result
+            _, invalid_identities = identity_index(account_id, result)
+            if invalid_identities:
+                raise ValueError(f'Assignment identities are ambiguous or missing: {invalid_identities}')
             
             # Persist for background urgent checks only if changed or baseline missing
             try:
@@ -403,6 +417,8 @@ class LMSDashboardService:
                         str(a.get('assignment_no') or '').strip(),
                         str(a.get('title') or '').strip(),
                         str(a.get('course_code') or '').strip(),
+                        str(a.get('course_name') or '').strip(),
+                        str(a.get('semester') or '').strip(),
                         str(a.get('deadline') or '').strip(),
                         str(a.get('actual_deadline') or '').strip(),
                         str(a.get('extended_deadline') or '').strip(),
@@ -426,6 +442,7 @@ class LMSDashboardService:
                 
                 has_changed = (
                     not old_snapshot or
+                    latest_semester_name != old_snapshot.get('latest_semester_name') or
                     len(pending) != len(old_pending) or
                     len(missed) != len(old_missed) or
                     len(all_assignments_dict) != old_total or
@@ -439,16 +456,19 @@ class LMSDashboardService:
                     log_warning(f"Preserving existing assignments snapshot for {account_id}: {len(failed_courses)} course(s) failed to scrape", account_id=account_id)
                 elif has_changed:
                     payload = {
-                        'assignments_snapshot': result,
+                        **assignment_snapshot_payload(unified, result),
                         'last_updated': datetime.utcnow().isoformat() + 'Z',
                         'legacy_migrated': True
                     }
-                    data_manager.save_unified_dashboard(account_id, payload, merge=True)
+                    if not data_manager.save_unified_dashboard(account_id, payload, merge=True):
+                        raise RuntimeError('Failed to save assignments snapshot')
+                    self.cache.delete(f'assignments_summary:{account_id}')
                     log_info(f"Persisted changed assignments snapshot for {account_id}", account_id=account_id)
                 else:
                     log_debug(f"Assignments snapshot unchanged for {account_id}, skipping Firestore write", account_id=account_id)
             except Exception as e:
                 log_debug(f"Failed to persist dashboard assignment snapshot: {e}", account_id=account_id)
+                raise
             
             # Cache the result (30 minute TTL)
             try:

@@ -13,6 +13,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.models.lms_models import LMSAssignment
+from app.utils.assignment_identity import validate_courses, normalize_label, identity_index, assignment_snapshot_payload
 from app.utils.lms_logger import log_info, log_warning, log_error, log_debug, log_performance
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,10 @@ class LMSBackgroundService:
                 }
             
             latest_semester = options['semesters'][0]['code']
+            latest_semester_name = options['semesters'][0]['name']
+            if (not normalize_label(latest_semester_name) or
+                    normalize_label(latest_semester_name) == normalize_label(latest_semester)):
+                raise ValueError('Readable semester information is required')
             
             # Get all courses for the semester
             courses = self.lms_service.get_assignments_courses_for_semester(
@@ -409,6 +414,8 @@ class LMSBackgroundService:
                     'user_message': 'No courses found for the current semester'
                 }
             
+            validate_courses(courses)
+
             # Scrape assignments from all courses sequentially to avoid connection drops
             all_assignments = []
             failed_courses = []
@@ -418,7 +425,8 @@ class LMSBackgroundService:
                     assignments = self.lms_service.scraper_service.scrape_course_assignments(
                         account_id,
                         semester_code=latest_semester,
-                        course_code=course['code']
+                        course_code=course['code'],
+                        strict=True, expected_course_name=course['name']
                     )
                     all_assignments.extend(assignments or [])
                 except Exception as e:
@@ -447,6 +455,7 @@ class LMSBackgroundService:
                 'missed': [a.to_dict() for a in missed],
                 'all_assignments': [a.to_dict() for a in all_assignments],
                 'latest_semester': latest_semester,
+                'latest_semester_name': latest_semester_name,
                 'refreshed_at': datetime.now().isoformat(),
                 'course_count': len(courses),
                 'total_assignments': len(all_assignments),
@@ -454,12 +463,27 @@ class LMSBackgroundService:
                 'total_missed': len(missed),
             }
             
+            if failed_courses:
+                raise RuntimeError('Incomplete assignment scrape; preserving previous snapshot')
+            _, invalid = identity_index(account_id, cache_data)
+            if invalid:
+                raise ValueError(f'Assignment identities are ambiguous or missing: {invalid}')
+
             # Persist for background urgent checks (no TTL data_manager)
             try:
                 from app.utils.data_manager import data_manager
-                data_manager.save_account_data(account_id, 'assignments_snapshot', cache_data)
+                unified = data_manager.get_unified_dashboard(account_id) or {}
+                if not data_manager.save_unified_dashboard(account_id, {
+                    **assignment_snapshot_payload(unified, cache_data),
+                    'last_updated': datetime.utcnow().isoformat() + 'Z',
+                    'legacy_migrated': True
+                }, merge=True):
+                    raise RuntimeError('Failed to save assignments snapshot')
+                from app.services.lms_cache_service import get_cache_service
+                get_cache_service().delete(f'assignments_summary:{account_id}')
             except Exception as e:
                 log_debug(f"Failed to persist assignment snapshot: {e}", account_id=account_id)
+                raise
             
             # Store in cache with 30-minute TTL
             self.lms_service._cache_data(

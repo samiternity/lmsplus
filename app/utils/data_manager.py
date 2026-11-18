@@ -112,6 +112,8 @@ class DataManager:
                                 str(a.get('assignment_no') or '').strip(),
                                 str(a.get('title') or '').strip(),
                                 str(a.get('course_code') or '').strip(),
+                                str(a.get('course_name') or '').strip(),
+                                str(a.get('semester') or '').strip(),
                                 str(a.get('deadline') or '').strip(),
                                 str(a.get('actual_deadline') or '').strip(),
                                 str(a.get('extended_deadline') or '').strip(),
@@ -126,7 +128,8 @@ class DataManager:
                                 str(a.get('urgency_level') or '').strip()
                             )
 
-                        if (len(new_pending) == len(old_pending) and
+                        if (safe_data.get('latest_semester_name') == old_snapshot.get('latest_semester_name') and
+                            len(new_pending) == len(old_pending) and
                             len(new_missed) == len(old_missed) and
                             len(new_all) == len(old_all) and
                             sorted(_assignment_sig(a) for a in new_pending) == sorted(_assignment_sig(a) for a in old_pending) and
@@ -140,6 +143,9 @@ class DataManager:
                         'last_updated': datetime.utcnow().isoformat() + 'Z',
                         'legacy_migrated': True
                     }
+                    if data_type == 'assignments_snapshot':
+                        from app.utils.assignment_identity import assignment_snapshot_payload
+                        payload.update(assignment_snapshot_payload(unified, safe_data))
                     self.save_unified_dashboard(account_id, payload, merge=True)
                     from app.utils.lms_logger import resolve_enrollment
                     print(f"[DATA_MGR] Saved {data_type} to user_dashboards for {resolve_enrollment(account_id)}")

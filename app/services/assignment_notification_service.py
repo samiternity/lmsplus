@@ -7,10 +7,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 import logging
+from copy import deepcopy
 
 from app.services.notification_service import get_notification_service
 from app.models.notification_models import NotificationType
 from app.utils.assignment_categorization import submission_cutoff
+from app.utils.assignment_identity import (
+    assignment_identity, identity_index, migrate_tracking, normalize_label, notification_timestamp,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +36,24 @@ class AssignmentNotificationService:
         try:
             from app.utils.data_manager import data_manager
             unified = data_manager.get_unified_dashboard(account_id) or {}
-            return unified.get('assignment_tracking', {'known_assignments': [], 'notified_deadlines': {}})
+            return unified.get('assignment_tracking_v2') or unified.get(
+                'assignment_tracking', {'known_assignments': [], 'notified_deadlines': {}})
         except Exception as e:
             logger.error(f"Error loading tracked assignments: {e}")
+            raise RuntimeError('Failed to load assignment notification tracking') from e
             
-        return {'known_assignments': [], 'notified_deadlines': {}}
-    
     def _save_tracked_assignments(self, account_id: str, data: Dict[str, Any]) -> bool:
         """Save tracked assignments for an account as an atomic slice"""
         try:
             from app.utils.data_manager import data_manager
             payload = {
-                'assignment_tracking': data,
+                'assignment_tracking_v2' if data.get('identity_version') == 2 else 'assignment_tracking': data,
                 'last_updated': datetime.utcnow().isoformat() + 'Z',
                 'legacy_migrated': True
             }
+            if data.get('identity_version') == 2:
+                # Clear the checkpoint atomically with the successful migration write.
+                payload['assignment_tracking_migration_snapshot'] = None
             return data_manager.save_unified_dashboard(account_id, payload, merge=True)
         except Exception as e:
             logger.error(f"Error saving tracked assignments: {e}")
@@ -162,7 +169,9 @@ class AssignmentNotificationService:
                 tracking_info['last_notified'] = now.isoformat()
                 tracking_info['count'] = tracking_info.get('count', 1) + 1
     
-    def check_and_notify(self, user_id: str, assignments: List[Any], user=None, account_id: str = None, send_push: bool = True, urgent_only: bool = False) -> Dict[str, int]:
+    def check_and_notify(self, user_id: str, assignments: List[Any], user=None, account_id: str = None, send_push: bool = True, urgent_only: bool = False,
+                         *, snapshot: Optional[Dict] = None, previous_snapshot: Optional[Dict] = None,
+                         complete_scrape: bool = False) -> Dict[str, int]:
         """
         Check assignments for notification triggers and send notifications.
         
@@ -172,23 +181,52 @@ class AssignmentNotificationService:
             user: User object to check preferences
             account_id: Account ID for per-account tracking (falls back to user_id)
             send_push: Whether to send FCM push notifications (default True for background service)
+            snapshot: Validated semester and assignment metadata for semantic identities.
+            previous_snapshot: Snapshot captured before the current scrape replaced it.
+            complete_scrape: Allow migration only after a complete fresh scrape.
             
         Returns:
             Dictionary with counts of notifications sent by type
         """
         # Dashboard reads must not consume the Discord reminder frequency state.
-        if not assignments or not send_push:
+        if not send_push:
             return {'new': 0, 'due_24h': 0, 'due_3d': 0, 'overdue': 0}
+        if not assignments and not complete_scrape:
+            return {'new': 0, 'due_24h': 0, 'due_3d': 0, 'overdue': 0}
+        if snapshot and (snapshot.get('error') or snapshot.get('failed_courses') or snapshot.get('warning')):
+            raise ValueError('Cannot notify from an incomplete assignment scrape')
         
         # Use account_id for tracking to avoid cross-account pollution
         tracking_key = account_id or user_id
         
         notification_service = get_notification_service()
         tracking_data = self._load_tracked_assignments(tracking_key)
+        use_v2 = tracking_data.get('identity_version') == 2
+        valid_identities = {}
+        if snapshot is not None:
+            # Old snapshots may predate readable semester metadata. Their IDs remain
+            # legacy until a fresh scrape, but duplicate rows still must be rejected.
+            validation_snapshot = dict(snapshot)
+            if not use_v2 and not complete_scrape and not snapshot.get('latest_semester_name'):
+                validation_snapshot['latest_semester_name'] = 'legacy snapshot'
+            valid_identities, invalid = identity_index(tracking_key, validation_snapshot)
+            if invalid:
+                logger.warning('Skipping %d invalid or conflicting assignment identities', invalid)
+            if complete_scrape and not urgent_only and not use_v2:
+                if invalid or not snapshot.get('latest_semester_name'):
+                    raise ValueError('Cannot migrate invalid assignment metadata')
+                tracking_data = migrate_tracking(tracking_key, tracking_data, snapshot, previous_snapshot)
+                # Commit the baseline before delivering reminders. A failed save must remain retryable.
+                if not self._save_tracked_assignments(tracking_key, tracking_data):
+                    raise RuntimeError('Failed to save assignment tracking migration')
+                logger.info('Assignment tracking migration completed; baselined %d assignments', len(valid_identities))
+                use_v2 = True
+        elif complete_scrape or use_v2:
+            raise ValueError('Semantic assignment tracking requires snapshot metadata')
         initial_known = set(tracking_data.get('known_assignments', []))
         known_assignments = set(initial_known)
-        initial_notified = dict(tracking_data.get('notified_deadlines', {}))
-        notified_deadlines = dict(initial_notified)
+        initial_notified = deepcopy(tracking_data.get('notified_deadlines', {}))
+        notified_deadlines = deepcopy(initial_notified)
         
         counts = {'new': 0, 'due_24h': 0, 'due_3d': 0, 'overdue': 0}
         
@@ -198,10 +236,24 @@ class AssignmentNotificationService:
         
         for assignment in assignments:
             try:
+                course_label = normalize_label(getattr(assignment, 'course_name', None))
+                if not course_label or course_label == normalize_label(getattr(assignment, 'course_code', None)):
+                    logger.warning('Skipping assignment with an unverified course label')
+                    continue
                 # Get assignment ID using robust attributes (LMSAssignment uses assignment_id and assignment_no, not id)
                 lms_id = getattr(assignment, 'assignment_id', None)
                 fallback_id = f"{getattr(assignment, 'assignment_no', '')}_{assignment.title}_{assignment.course_code}"
                 assignment_id = lms_id if lms_id else fallback_id
+                notification_assignment_id = assignment_id
+                if snapshot is not None:
+                    row = assignment.to_dict() if hasattr(assignment, 'to_dict') else assignment
+                    validation_id = assignment_identity(tracking_key, validation_snapshot.get('latest_semester_name'), row)
+                    if validation_id not in valid_identities:
+                        continue
+                if use_v2:
+                    assignment_id = assignment_identity(tracking_key, snapshot.get('latest_semester_name'), row)
+                    if assignment_id not in valid_identities:
+                        continue
                 
                 # Use robust categorization to determine if it's submitted
                 from app.utils.assignment_categorization import categorize_assignment
@@ -212,7 +264,7 @@ class AssignmentNotificationService:
                 if assignment_id not in known_assignments:
                     record_assignment = True
                     # Edge case: If the assignment is already submitted, skip the "New Assignment" notification
-                    if not urgent_only and not is_submitted:
+                    if not urgent_only and not is_submitted and cat != 'missed':
                         # Check frequency rules for new assignment notifications
                         if self._should_notify_based_on_frequency(assignment_id, 'new', notified_deadlines, now):
                             if self._should_notify(user, 'new_assignment'):
@@ -226,7 +278,7 @@ class AssignmentNotificationService:
                                     notification_type=NotificationType.ASSIGNMENT_NEW,
                                     title=f"New Assignment — {course_display}",
                                     message=f"{asn_label} has been posted",
-                                    data={'assignment_id': assignment_id, 'course_name': course_display, 'url': asn_url},
+                                    data={'assignment_id': notification_assignment_id, 'course_name': course_display, 'url': asn_url},
                                     send_push=send_push
                                 )
                                 if notification is None:
@@ -260,7 +312,7 @@ class AssignmentNotificationService:
                                     notification_type=NotificationType.ASSIGNMENT_OVERDUE,
                                     title=f"Missed Deadline — {course_display}",
                                     message=f"{asn_label} deadline has passed",
-                                    data={'assignment_id': assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
+                                    data={'assignment_id': notification_assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
                                     send_push=send_push
                                 )
                                 if notification is None:
@@ -283,7 +335,7 @@ class AssignmentNotificationService:
                                     notification_type=NotificationType.ASSIGNMENT_DUE_24H,
                                     title=f"Due in {time_str} — {course_display}",
                                     message=f"{asn_label} is due very soon",
-                                    data={'assignment_id': assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
+                                    data={'assignment_id': notification_assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
                                     send_push=send_push
                                 )
                                 if notification is None:
@@ -306,7 +358,7 @@ class AssignmentNotificationService:
                                         notification_type=NotificationType.ASSIGNMENT_DUE_3D,
                                         title=f"Due in {days_left} day{'s' if days_left != 1 else ''} — {course_display}",
                                         message=f"{asn_label} deadline is approaching",
-                                        data={'assignment_id': assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
+                                        data={'assignment_id': notification_assignment_id, 'course_name': course_display, 'deadline': deadline.isoformat(), 'url': asn_url},
                                         send_push=send_push
                                     )
                                     if notification is None:
@@ -329,7 +381,8 @@ class AssignmentNotificationService:
             tracking_data['known_assignments'] = list(known_assignments)
             tracking_data['notified_deadlines'] = notified_deadlines
             tracking_data['last_check'] = now.isoformat()
-            self._save_tracked_assignments(tracking_key, tracking_data)
+            if not self._save_tracked_assignments(tracking_key, tracking_data):
+                raise RuntimeError('Failed to save assignment notification progress')
         
         # Web push notifications are now sent discretely via notification_service.send_notification
         
@@ -360,22 +413,23 @@ class AssignmentNotificationService:
         tracking_data = self._load_tracked_assignments(account_id)
         notified_deadlines = tracking_data.get('notified_deadlines', {})
         
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.utcnow() + timedelta(hours=5) - timedelta(days=days)
         original_count = len(notified_deadlines)
         
         # Remove old entries
         cleaned = {}
         for key, timestamp in notified_deadlines.items():
             try:
-                entry_time = datetime.fromisoformat(timestamp)
-                if entry_time > cutoff:
+                entry_time = notification_timestamp(timestamp)
+                if entry_time is not None and entry_time > cutoff:
                     cleaned[key] = timestamp
             except (ValueError, TypeError):
                 pass
         
         if len(cleaned) != original_count:
             tracking_data['notified_deadlines'] = cleaned
-            self._save_tracked_assignments(account_id, tracking_data)
+            if not self._save_tracked_assignments(account_id, tracking_data):
+                raise RuntimeError('Failed to save assignment tracking cleanup')
         
         return original_count - len(cleaned)
 
