@@ -407,17 +407,18 @@ class LMSService:
         return courses
     
     @handle_service_errors("get_assignments_options")
-    def get_assignments_options(self, account_id: str) -> Dict[str, Any]:
+    def get_assignments_options(self, account_id: str, *, force_refresh: bool = False) -> Dict[str, Any]:
         """
         Get available semesters and courses for assignments selection.
-        Cached with a 6-hour TTL — these change at most once per semester.
+        Cache options for display. Callers starting a fresh scrape can bypass
+        the cache because the LMS can rotate dropdown tokens within a semester.
         """
         log_info(f"Getting assignments options for account {account_id}",
                 account_id=account_id, operation="get_assignments_options")
 
         cache_key = f"assignments_options:{account_id}"
         cached = self._memory_cache.get(cache_key)
-        if cached:
+        if cached and not force_refresh:
             expires_at, options = cached
             if datetime.now() < expires_at:
                 log_debug(f"Returning cached assignments options for account {account_id}",

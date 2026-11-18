@@ -124,7 +124,10 @@ def get_pending_assignments():
                 try:
                     last_refresh = datetime.fromisoformat(last_refresh_str)
                     if (now - last_refresh).total_seconds() < 10:
-                        return jsonify({'error': 'Please wait 10 seconds between manual refreshes.'}), 429
+                        return jsonify({
+                            'error': 'Please wait 10 seconds between manual refreshes.',
+                            'error_code': 'REFRESH_COOLDOWN',
+                        }), 429
                 except ValueError:
                     pass
             
@@ -133,7 +136,10 @@ def get_pending_assignments():
             count = prefs.get('daily_refresh_count', 0)
             if daily_date == today:
                 if count >= 15:
-                    return jsonify({'error': 'Daily manual refresh limit (15) reached.'}), 429
+                    return jsonify({
+                        'error': 'Daily manual refresh limit (15) reached.',
+                        'error_code': 'REFRESH_DAILY_LIMIT',
+                    }), 429
             else:
                 count = 0
                 

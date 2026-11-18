@@ -381,7 +381,7 @@ class LMSBackgroundService:
                     account_id=account_id, operation="background_refresh")
             
             # Get latest semester
-            options = self.lms_service.get_assignments_options(account_id)
+            options = self.lms_service.get_assignments_options(account_id, force_refresh=True)
             if not options.get('semesters'):
                 log_warning(f"No semesters found for {account_id}",
                            account_id=account_id, error_code="NO_SEMESTERS")

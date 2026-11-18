@@ -35,8 +35,8 @@ function harness(initial = saved) {
             showLMSBanner(...args) { calls.banner.push(args); }}
     });
     vm.runInContext(loadFunction, context);
-    return {state, calls, async load(data, force = true) {
-        response = data instanceof Error ? data : {ok: true, status: 200, json: async () => data};
+    return {state, calls, async load(data, force = true, status = 200) {
+        response = data instanceof Error ? data : {ok: status === 200, status, json: async () => data};
         context.loadAssignments(force);
         await new Promise(resolve => setImmediate(resolve));
     }};
@@ -64,6 +64,14 @@ for (const failure of [
         assert.equal(h.calls.reset, 1);
     });
 }
+
+test('manual refresh distinguishes the daily limit from the cooldown', async () => {
+    const h = harness();
+    await h.load({error_code: 'REFRESH_COOLDOWN'}, true, 429);
+    await h.load({error_code: 'REFRESH_DAILY_LIMIT'}, true, 429);
+    assert.deepEqual(h.calls.errors, ['Cooldown active', 'Daily limit reached']);
+    assert.equal(h.state.data, saved);
+});
 
 test('failed initial request can show the saved snapshot without reporting refresh success', async () => {
     const h = harness(null);

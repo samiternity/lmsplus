@@ -302,7 +302,7 @@ class LMSDashboardService:
             
             # Get latest semester
             try:
-                options = self.lms_service.get_assignments_options(account_id)
+                options = self.lms_service.get_assignments_options(account_id, force_refresh=True)
             except Exception as e:
                 log_error(f"Failed to get assignment options: {e}",
                          error_code="GET_OPTIONS_ERROR",

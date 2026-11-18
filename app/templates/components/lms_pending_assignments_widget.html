@@ -875,7 +875,7 @@
         }, 420);
     }
 
-    function completeProgressError(errorMessage, isCooldown = false) {
+    function completeProgressError(statusLabel = 'Sync failed', isRateLimited = false) {
         stopProgressTicker();
         const pill = elements.headerAgeIndicator || document.getElementById('assignmentsAgeIndicator');
         const textEl = elements.headerAgeText || document.getElementById('assignmentsAgeText');
@@ -886,10 +886,10 @@
             pill.classList.add('is-error');
         }
         if (iconEl) {
-            iconEl.className = isCooldown ? 'fas fa-hourglass-half assignments-age-icon' : 'fas fa-exclamation-triangle assignments-age-icon';
+            iconEl.className = isRateLimited ? 'fas fa-hourglass-half assignments-age-icon' : 'fas fa-exclamation-triangle assignments-age-icon';
         }
         if (textEl) {
-            textEl.textContent = isCooldown ? 'Cooldown active' : 'Sync failed';
+            textEl.textContent = statusLabel;
         }
 
         setTimeout(() => {
@@ -949,6 +949,7 @@
                 return response.json().then(err => {
                     const errObj = new Error(err.error || 'Please wait before refreshing again.');
                     errObj.status = 429;
+                    errObj.code = err.error_code;
                     throw errObj;
                 });
             }
@@ -995,7 +996,7 @@
                     );
                 }
                 if (forceRefresh) {
-                    completeProgressError(message, false);
+                    completeProgressError();
                 }
                 if (!widgetState.data) {
                     showError(message);
@@ -1005,9 +1006,9 @@
         .catch(error => {
             widgetState.isLoading = false;
             console.error('Error loading assignments:', error);
-            const isCooldown = (error && error.status === 429) || (error && error.message && error.message.toLowerCase().includes('wait'));
+            const isRateLimited = error.status === 429;
 
-            if (!isCooldown && typeof window.showLMSBanner === 'function') {
+            if (!isRateLimited && typeof window.showLMSBanner === 'function') {
                 window.showLMSBanner(
                     'Could not refresh assignments',
                     'Refresh failed. Please try again later.',
@@ -1016,7 +1017,11 @@
             }
 
             if (forceRefresh) {
-                completeProgressError(error.message, isCooldown);
+                const statusLabel = {
+                    REFRESH_COOLDOWN: 'Cooldown active',
+                    REFRESH_DAILY_LIMIT: 'Daily limit reached'
+                }[error.code] || (isRateLimited ? 'Refresh limited' : 'Sync failed');
+                completeProgressError(statusLabel, isRateLimited);
                 if (typeof window.showFlashMessage === 'function') {
                     window.showFlashMessage(error.message || 'Failed to refresh data', 'error');
                 }

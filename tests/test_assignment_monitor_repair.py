@@ -15,6 +15,7 @@ from app.services.background_notification_service import _check_assignments, che
 from app.services.lms_dashboard_service import LMSDashboardService
 from app.services.lms_background_service import LMSBackgroundService
 from app.services.lms_scraper_service import LMSScraperService, LMSParsingError
+from app.services.lms_service import LMSService
 from app.utils.assignment_identity import (
     assignment_identity, assignment_title_identity, identity_index, migrate_tracking,
     normalize_label, assignment_snapshot_payload,
@@ -164,6 +165,41 @@ def dashboard():
     }
     service.lms_service.scraper_service.scrape_course_assignments.return_value = [assignment()]
     return service
+
+
+def test_force_sync_fetches_fresh_dropdown_tokens(storage, dashboard):
+    lms = LMSService.__new__(LMSService)
+    lms._ensure_valid_session = Mock()
+    lms._cache_assignments = Mock()
+    lms.scraper_service = dashboard.lms_service.scraper_service
+    cached = dashboard.lms_service.get_assignments_options.return_value
+    fresh = {
+        'semesters': [{'code': 'new-term', 'name': 'Fall 2026'}],
+        'courses': [{'code': 'new-course', 'name': 'Networks'}],
+    }
+    lms._memory_cache = {'assignments_options:account': (datetime.now() + timedelta(hours=1), cached)}
+    lms.scraper_service.get_assignments_options.return_value = fresh
+    lms.scraper_service.scrape_course_assignments.return_value = [assignment(code='new-course')]
+    dashboard.lms_service = lms
+
+    assert lms.get_assignments_options('account') == cached
+    lms.scraper_service.get_assignments_options.assert_not_called()
+    result = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+
+    assert not result.get('error')
+    assert storage[0]['assignments_snapshot']['latest_semester'] == 'new-term'
+    lms.scraper_service.scrape_course_assignments.assert_called_once_with(
+        'account', semester_code='new-term', course_code='new-course',
+        strict=True, expected_course_name='Networks',
+    )
+    assert lms.get_assignments_options('account') == fresh
+
+    lms.scraper_service.get_assignments_options.return_value = {'semesters': [], 'courses': []}
+    failed = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+    assert failed['refresh_failed'] and failed['using_saved_snapshot']
+    assert failed['refreshed_at'] == result['refreshed_at']
+    assert failed['pending'][0]['course_code'] == 'new-course'
+    assert lms.get_assignments_options('account') == fresh
 
 
 def test_name_only_repair_persists_and_clears_summary(storage, dashboard):
