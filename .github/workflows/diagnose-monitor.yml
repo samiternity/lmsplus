@@ -15,7 +15,7 @@ jobs:
       - name: Count sanitized assignment refresh errors
         shell: bash
         run: |
-          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="university-portal" AND severity>=DEFAULT AND ("FETCH_ASSIGNMENTS_ERROR" OR "COURSE_FETCH_ERROR" OR "Error forced refreshing assignments")' --project unitrack-61e76 --freshness=6h --limit=100 --format=json > "$RUNNER_TEMP/monitor-errors.json"
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="university-portal" AND severity>=DEFAULT AND ("FETCH_ASSIGNMENTS_ERROR" OR "COURSE_FETCH_ERROR" OR "GET_OPTIONS_ERROR" OR "NO_COURSES" OR "NO_SEMESTERS" OR "Error forced refreshing assignments")' --project unitrack-61e76 --freshness=6h --limit=100 --format=json > "$RUNNER_TEMP/monitor-errors.json"
           python - <<'PYTHON'
           from pathlib import Path
           from collections import Counter
@@ -34,6 +34,9 @@ jobs:
               'Readable semester information is required',
               'Course metadata is missing or ambiguous',
               'No semesters returned from LMS',
+              'No courses found',
+              'No semesters found',
+              'Failed to get assignment options',
               'University authentication is required',
               'Failed to save assignments snapshot',
               'University assignment request failed',
