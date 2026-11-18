@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import hashlib
 import json
+import logging
 import unicodedata
 
 
@@ -83,6 +84,12 @@ def assignment_snapshot_payload(unified, snapshot, account_id=None):
 
 def identity_index(account_id, snapshot, known_assignments=()):
     """Return unique identities and a count of unusable or conflicting rows."""
+    groups, missing = _identity_groups(account_id, snapshot, known_assignments)
+    unique = {key: rows[0] for key, rows in groups.items() if len(rows) == 1}
+    return unique, len(missing) + sum(len(rows) for rows in groups.values() if len(rows) > 1)
+
+
+def _identity_groups(account_id, snapshot, known_assignments=()):
     rows = snapshot_rows(snapshot)
     keys = [assignment_identity(account_id, snapshot.get('latest_semester_name'), row)
             if normalize_label(row.get('title')) else None for row in rows]
@@ -93,9 +100,36 @@ def identity_index(account_id, snapshot, known_assignments=()):
     keys = [assignment_title_identity(account_id, snapshot.get('latest_semester_name'), row)
             if key and (counts[key] > 1 or key in disambiguated) else key
             for key, row in zip(keys, rows)]
-    counts = Counter(keys)
-    unique = {key: row for key, row in zip(keys, rows) if key and counts[key] == 1}
-    return unique, sum(1 for key in keys if not key or counts[key] > 1)
+    groups = defaultdict(list)
+    missing = []
+    for key, row in zip(keys, rows):
+        if key:
+            groups[key].append(row)
+        else:
+            missing.append(row)
+    return groups, missing
+
+
+def log_identity_conflicts(account_id, snapshot):
+    """Report collision evidence without logging labels or LMS action IDs."""
+    groups, missing = _identity_groups(account_id, snapshot)
+    counts = Counter()
+    for row in missing:
+        reason = 'missing_title' if not normalize_label(row.get('title')) else 'missing_context'
+        counts[reason] += 1
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        ids = [row.get('assignment_id') for row in rows]
+        if not all(ids):
+            reason = 'collision_missing_action_id'
+        elif len(set(ids)) == 1:
+            reason = 'collision_shared_action_id'
+        else:
+            reason = 'collision_distinct_action_ids'
+        counts[reason] += len(rows)
+    if counts:
+        logging.getLogger(__name__).warning('Assignment identity diagnostic: %s', dict(counts))
 
 
 def notification_timestamp(record):
