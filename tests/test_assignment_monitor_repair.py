@@ -550,6 +550,35 @@ def test_collisions_block_migration_and_skip_v2_alerts(storage, engine):
     send.assert_not_called()
 
 
+@pytest.mark.parametrize('background', [False, True])
+def test_complete_scrape_updates_monitor_even_with_conflicting_notification_ids(storage, dashboard, background, caplog):
+    state, _ = storage
+    first, second = assignment(), assignment(token='other', days=-2)
+    before = snapshot(assignment(3))
+    state['assignments_snapshot'] = before
+    lms = dashboard.lms_service
+    lms.scraper_service.scrape_course_assignments.return_value = [first, second]
+    assert identity_index('account', snapshot(first, second))[1] == 2
+
+    if background:
+        lms.get_assignments_courses_for_semester.return_value = lms.get_assignments_options.return_value['courses']
+        with patch('app.services.lms_cache_service.get_cache_service'):
+            assert LMSBackgroundService(lms)._refresh_all_pending_assignments('account')['success']
+    else:
+        refresh = dashboard.get_pending_assignments_widget_data('account', force_refresh=True)
+        assert not refresh.get('error')
+        assert not refresh.get('using_saved_snapshot')
+
+    saved = state['assignments_snapshot']
+    assert saved['total_pending'] == saved['total_missed'] == 1
+    assert {row['assignment_id'] for row in saved['all_assignments']} == {'action-token', 'other'}
+    assert 'assignment_tracking_v2' not in state
+    assert state['assignment_tracking_migration_snapshot']['all_assignments'][0]['assignment_no'] == 3
+    diagnostic = [record.getMessage() for record in caplog.records
+                  if record.getMessage().startswith('Assignment identity diagnostic:')]
+    assert diagnostic == ["Assignment identity diagnostic: {'collision_distinct_action_ids': 2}"]
+
+
 def test_reused_display_numbers_with_different_titles_are_valid_assignments(storage, dashboard):
     first, second = assignment(token='first'), assignment(token='second')
     first.title, second.title = 'Assignment 01', 'CCP'

@@ -13,7 +13,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.models.lms_models import LMSAssignment
-from app.utils.assignment_identity import validate_courses, normalize_label, identity_index, assignment_snapshot_payload
+from app.utils.assignment_identity import validate_courses, normalize_label, assignment_snapshot_payload, log_identity_conflicts
 from app.utils.lms_logger import log_info, log_warning, log_error, log_debug, log_performance
 
 logger = logging.getLogger(__name__)
@@ -465,9 +465,8 @@ class LMSBackgroundService:
             
             if failed_courses:
                 raise RuntimeError('Incomplete assignment scrape; preserving previous snapshot')
-            _, invalid = identity_index(account_id, cache_data)
-            if invalid:
-                raise ValueError(f'Assignment identities are ambiguous or missing: {invalid}')
+            # Notification tracking validates identities separately from the monitor snapshot.
+            log_identity_conflicts(account_id, cache_data)
 
             # Persist for background urgent checks (no TTL data_manager)
             try:

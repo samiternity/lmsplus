@@ -10,7 +10,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.services.lms_cache_service import get_cache_service, LMSCacheService
-from app.utils.assignment_identity import validate_courses, normalize_label, identity_index, assignment_snapshot_payload
+from app.utils.assignment_identity import validate_courses, normalize_label, assignment_snapshot_payload, log_identity_conflicts
 from app.utils.lms_logger import log_info, log_warning, log_debug, log_error, log_performance
 from app.utils.assignment_categorization import (
     parse_deadline,
@@ -432,9 +432,8 @@ class LMSDashboardService:
                 result['failed_courses'] = failed_courses
                 # Incomplete results must not update caches or notification baselines.
                 return result
-            _, invalid_identities = identity_index(account_id, result)
-            if invalid_identities:
-                raise ValueError(f'Assignment identities are ambiguous or missing: {invalid_identities}')
+            # Notification tracking validates identities separately from the monitor snapshot.
+            log_identity_conflicts(account_id, result)
             
             # Persist for background urgent checks only if changed or baseline missing
             try:
