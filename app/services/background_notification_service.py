@@ -391,6 +391,7 @@ def check_cached_urgent_assignments_only() -> str:
             send_push=True,
             urgent_only=True,
             snapshot=snapshot,
+            previous_snapshot=unified.get('assignment_tracking_migration_snapshot'),
         )
 
         total_urgent_pushed += sum(counts.values()) if counts else 0

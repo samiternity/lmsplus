@@ -145,7 +145,7 @@ class DataManager:
                     }
                     if data_type == 'assignments_snapshot':
                         from app.utils.assignment_identity import assignment_snapshot_payload
-                        payload.update(assignment_snapshot_payload(unified, safe_data))
+                        payload.update(assignment_snapshot_payload(unified, safe_data, account_id))
                     self.save_unified_dashboard(account_id, payload, merge=True)
                     from app.utils.lms_logger import resolve_enrollment
                     print(f"[DATA_MGR] Saved {data_type} to user_dashboards for {resolve_enrollment(account_id)}")
