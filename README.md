@@ -25,4 +25,6 @@ This is an independent project and is not affiliated with Bahria University. I b
 
 Want to contribute or self-host? Check the [contribution guide](CONTRIBUTING.md) for setup instructions. Please contact me before starting work on a new feature.
 
+For AI connector setup, tool contracts and local verification, see the [MCP guide](lms_mcp/README.md).
+
 Licensed under the [MIT License](LICENSE).
