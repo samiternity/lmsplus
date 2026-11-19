@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>In the frozen synthetic November 19, 2026 account, page through pending work two rows at a time. Open the earliest-due assignment, resolving any live selection by matching the listed title. What is its minimum A-to-C graph latency? Answer only the number of milliseconds.</question>
+    <answer>11</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, inspect both pending assignments in Networks. What percentage of the message in the reliability worksheet is header bytes? Answer only the number, without a percent sign.</question>
+    <answer>20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, read the pending database lookup exercise and the earliest pending networking graph exercise. Subtract the fastest graph path latency in milliseconds from the number of page reads saved by the index. Answer only the integer.</question>
+    <answer>101</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, compare the independent series-system availabilities described in pending networking and probability assignments. Which course has the more reliable system? Answer only the course name.</question>
+    <answer>Probability</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, read the pending scheduling exercise and the earliest networking graph assignment. What is the absolute difference between task C's completion time and the fastest graph path latency? Answer only the number of milliseconds.</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, find the earliest pending assignment by listing work, then open its correct live attachment. Calculate its end-to-end packet time, including the specified serialization delay and fastest path. Answer only the number of milliseconds.</question>
+    <answer>13</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, page through pending work with limit 2 and inspect the graph and indexing assignments live to confirm their identities. How many calendar days separate their deadlines in Asia/Karachi? Answer only the integer.</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, add the expected number of failed requests in the probability worksheet to the number of root-to-leaf edges in the database tree exercise. Answer only the integer.</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, compare the percentage reduction from the direct graph edge to the fastest alternative path against the page-read reduction from indexing. Which assignment describes the larger percentage saving? Answer only its title.</question>
+    <answer>Index Analysis</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the synthetic account, paginate both pending and overdue work with limit 2, then read the pending scheduling and probability worksheets. Multiply the sum of the three task completion times by the expected number of failed requests. Answer only the integer.</question>
+    <answer>34</answer>
+  </qa_pair>
+</evaluation>

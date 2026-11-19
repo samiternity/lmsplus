@@ -101,15 +101,29 @@ async def fetch_client_metadata(client_id):
                 isinstance(uri, str) and valid_callback(uri) for uri in redirects
             ):
                 return None
-            if document.get('token_endpoint_auth_method', 'none') != 'none':
+            # CIMD clients can publish multiple methods (SEP-3149). The legacy
+            # singular value is a preference, not a requirement when the plural
+            # field is present. This server supports public CIMD clients with
+            # PKCE; never silently downgrade a client that only supports JWT.
+            methods = document.get('token_endpoint_auth_methods_supported',
+                                   [document.get('token_endpoint_auth_method', 'none')])
+            if (not isinstance(methods, list) or not methods
+                    or not all(isinstance(method, str) and method for method in methods)
+                    or 'none' not in methods):
                 return None
             scope = document.get('scope', SCOPE)
             if not isinstance(scope, str) or set(scope.split()) != {SCOPE}:
                 return None
+            grants = document.get('grant_types', ['authorization_code'])
+            responses = document.get('response_types', ['code'])
+            if (not isinstance(grants, list) or not all(isinstance(grant, str) for grant in grants)
+                    or 'authorization_code' not in grants or responses != ['code']):
+                return None
             return RegisteredClient(
                 client_id=client_id, client_name=document['client_name'], redirect_uris=redirects, exact_redirect_uris=redirects,
-                token_endpoint_auth_method='none', grant_types=document.get('grant_types', ['authorization_code']),
-                response_types=document.get('response_types', ['code']), scope=SCOPE,
+                token_endpoint_auth_method='none',
+                grant_types=[grant for grant in ('authorization_code', 'refresh_token') if grant in grants],
+                response_types=responses, scope=SCOPE,
             )
     except (OSError, TimeoutError, ValueError, RecursionError, httpx.HTTPError, httpx.InvalidURL):
         return None

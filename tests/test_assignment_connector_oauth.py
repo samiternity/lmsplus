@@ -216,14 +216,21 @@ def test_read_only_tool_schema_and_expired_tokens(environment):
     response = tool(env, tokens['access_token'], 'tools/list')
     assert response.status_code == 200, response.text
     tools = response.json()['result']['tools']
-    assert {t['name'] for t in tools} == {'get_pending_assignment', 'list_assignments'}
+    assert {t['name'] for t in tools} == {'get_pending_assignment', 'list_assignments',
+        'lmsplus_get_pending_assignment', 'lmsplus_list_assignments'}
     assert all(t['annotations']['readOnlyHint'] for t in tools)
+    assert all(t['outputSchema']['type'] == 'object' for t in tools)
     listing = next(t for t in tools if t['name'] == 'list_assignments')
     assert not listing['inputSchema'].get('required')
-    def list_snapshot(account_id, status, deadline):
+    def list_snapshot(account_id, status, deadline, *, limit, offset):
         assert account_id == 'a'
         assert status == 'pending'
-        return AssignmentResult({'status': 'ready', 'snapshot_age_seconds': 3600, 'assignments': {'pending': []}})
+        assert (limit, offset) == (50, 0)
+        return AssignmentResult({'status': 'ready', 'source': 'saved_assignment_snapshot',
+            'snapshot_at': None, 'snapshot_age_seconds': 3600, 'snapshot_partial': False,
+            'deadline_timezone': 'Asia/Karachi', 'assignments': {'pending': []},
+            'total_count': 0, 'category_counts': {'pending': 0}, 'count': 0, 'limit': limit,
+            'offset': offset, 'has_more': False, 'next_offset': None})
 
     env.app.extensions['lms_mcp'].assignments.list_snapshot = list_snapshot
     response = env.client.post('/mcp', headers={**MCP_HEADERS, 'Authorization': 'Bearer ' + tokens['access_token']},
@@ -231,10 +238,46 @@ def test_read_only_tool_schema_and_expired_tokens(environment):
     result = response.json()['result']
     assert not result.get('isError')
     assert json.loads(result['content'][0]['text'])['snapshot_age_seconds'] == 3600
+    assert result['structuredContent'] == json.loads(result['content'][0]['text'])
     from lms_mcp.store import digest
     key = 'mcp_tokens/' + digest(tokens['access_token'])
     env.store.docs[key]['expires_at'] = 0
     assert tool(env, tokens['access_token']).status_code == 401
+
+
+@pytest.mark.parametrize('arguments', [
+    {'course': ''}, {'course': '   '}, {'course': 'x' * 201},
+    {'course': 'Networks', 'assignment_id': 'invented'},
+    {'course': 'Networks', 'response_format': 'html'},
+])
+def test_tool_input_validation_prevents_upstream_calls(environment, arguments):
+    env = environment
+    client_id = register(env)
+    token = exchange(env, client_id, authorize(env, client_id)).json()['access_token']
+    response = env.client.post('/mcp', headers={**MCP_HEADERS, 'Authorization': 'Bearer ' + token}, json={
+        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+        'params': {'name': 'lmsplus_get_pending_assignment', 'arguments': arguments}})
+    assert response.json()['result']['isError']
+    assert env.calls == []
+
+
+def test_prefixed_and_legacy_tools_share_structured_and_markdown_results(environment):
+    from jsonschema import validate
+
+    env = environment
+    client_id = register(env)
+    token = exchange(env, client_id, authorize(env, client_id)).json()['access_token']
+    tools = tool(env, token, 'tools/list').json()['result']['tools']
+    schemas = {item['name']: item['outputSchema'] for item in tools}
+    for name in ('get_pending_assignment', 'lmsplus_get_pending_assignment'):
+        response = env.client.post('/mcp', headers={**MCP_HEADERS, 'Authorization': 'Bearer ' + token}, json={
+            'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+            'params': {'name': name, 'arguments': {'course': 'Networks', 'response_format': 'markdown'}}})
+        result = response.json()['result']
+        assert not result.get('isError'), result
+        validate(result['structuredContent'], schemas[name])
+        assert result['content'][0]['text'].startswith('## LMS+ assignments: ready')
+        assert result['content'][1]['text'] == 'Private assignment for a'
 
 
 @pytest.mark.parametrize('outcome', ['ready', 'missing_attachment', 'timeout'])

@@ -29,8 +29,11 @@ class AssignmentConnector:
         self.university, self.metadata, self.prepare = university, metadata, prepare
 
     @private_document_operation
-    def list_snapshot(self, account_id, status, deadline):
+    def list_snapshot(self, account_id, status, deadline, *, limit=50, offset=0):
         self.settings.check_account(account_id)
+        if (type(limit) is not int or not 1 <= limit <= 100
+                or type(offset) is not int or offset < 0):
+            raise ConnectorError('invalid_request', 'Use a limit from 1 to 100 and a nonnegative offset.')
         categories = {'pending': 'pending', 'overdue': 'missed'}
         if status != 'both' and status not in categories:
             raise ConnectorError('invalid_request', 'Choose pending, overdue, or both.')
@@ -54,21 +57,32 @@ class AssignmentConnector:
         from app.utils.assignment_categorization import categorize_assignments
         categorized = categorize_assignments(rows)
         groups = {}
+        counts = {}
+        position = 0
         for name, category in categories.items():
             if status not in (name, 'both'):
                 continue
             direction = 1 if name == 'pending' else -1
             ordered = sorted(categorized[category], key=lambda row: (
                 direction * row['hours_until_due'] if row['hours_until_due'] is not None else float('inf')))
+            counts[name] = len(ordered)
+            start = max(0, offset - position)
+            end = max(0, offset + limit - position)
             groups[name] = [
                 {key: row.get(key) for key in ('title', 'course_name', 'deadline')}
-                for row in ordered
+                for row in ordered[start:end]
             ]
+            position += len(ordered)
+        count = sum(len(rows) for rows in groups.values())
+        has_more = offset + count < position
         return AssignmentResult({
             'status': 'ready', 'source': 'saved_assignment_snapshot',
             'snapshot_at': captured.isoformat() if captured else None, 'snapshot_age_seconds': age,
             'snapshot_partial': bool(snapshot.get('failed_courses') or snapshot.get('warning')),
             'deadline_timezone': 'Asia/Karachi', 'assignments': groups,
+            'total_count': position, 'category_counts': counts, 'count': count,
+            'limit': limit, 'offset': offset, 'has_more': has_more,
+            'next_offset': offset + count if has_more else None,
         })
 
     @private_document_operation
@@ -110,7 +124,8 @@ class AssignmentConnector:
             self.store.put(metadata_key, options)
             candidates = matches()
         if not candidates:
-            return AssignmentResult({'status': 'course_not_found', 'courses': list(courses.values())})
+            return AssignmentResult({'status': 'course_not_found', 'courses': list(courses.values()),
+                                     'message': 'Choose a course name or code from courses and try again.'})
         if len(candidates) != 1:
             return AssignmentResult({'status': 'course_ambiguous', 'courses': candidates,
                                      'message': 'Ask the student which course they mean.'})

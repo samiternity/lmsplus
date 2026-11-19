@@ -137,6 +137,28 @@ def test_snapshot_listing_distinguishes_missing_from_empty_and_unknown_age():
     assert result['assignments'] == {'pending': []}
 
 
+def test_snapshot_pagination_crosses_categories_without_losing_rows():
+    rows = [dict(ROW, title=f'Pending {i}') for i in range(3)] + [
+        dict(ROW, title=f'Overdue {i}', deadline='2020-01-01T12:00:00+05:00') for i in range(2)]
+    service, university = connector(snapshot={'all_assignments': rows})
+    pages = [service.list_snapshot('a', 'both', Deadline(), limit=2, offset=offset).data
+             for offset in (0, 2, 4, 6)]
+    assert [page['count'] for page in pages] == [2, 2, 1, 0]
+    assert [page['next_offset'] for page in pages] == [2, 4, None, None]
+    assert all(page['total_count'] == 5 for page in pages)
+    assert pages[0]['category_counts'] == {'pending': 3, 'overdue': 2}
+    titles = [row['title'] for page in pages for rows in page['assignments'].values() for row in rows]
+    assert len(titles) == len(set(titles)) == 5
+    assert not (university.scrapes or university.downloads or university.option_calls)
+
+
+@pytest.mark.parametrize('limit, offset', [(0, 0), (101, 0), (1, -1), (True, 0), (1, 0.5)])
+def test_snapshot_pagination_rejects_invalid_bounds(limit, offset):
+    service, _ = connector()
+    with pytest.raises(ConnectorError, match='limit'):
+        service.list_snapshot('a', 'pending', Deadline(), limit=limit, offset=offset)
+
+
 def test_recovery_and_retry_have_separate_stage_durations(monkeypatch):
     clock = [100.0]
     monkeypatch.setattr('lms_mcp.core.time.monotonic', lambda: clock[0])

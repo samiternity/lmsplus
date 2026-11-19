@@ -1,6 +1,8 @@
 """Exercise the broader MCP OAuth policy against the SDK HTTP endpoints."""
 
 import asyncio
+import json
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -19,6 +21,7 @@ from lms_mcp.store import MemoryStore, digest
 ORIGIN = 'https://fixture-lms-plus.web.app'
 RESOURCE = ORIGIN + '/mcp'
 VERIFIER = 'abcde12345' * 6
+CHATGPT_METADATA = json.loads((Path(__file__).parent / 'fixtures/mcp/chatgpt-client.json').read_text())
 
 
 def test_other_apps_oauth_registration_and_exchange(monkeypatch):
@@ -198,5 +201,91 @@ def test_metadata_fetch_rejects_invalid_response(monkeypatch, response):
             transport=httpx.MockTransport(lambda request: httpx.Response(
                 response.status_code, headers=response.headers, stream=httpx.ByteStream(response.content))), **kwargs))
         assert await fetch_client_metadata('https://metadata.example.test/client.json') is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('changes, accepted', [
+    ({}, True),
+    ({'token_endpoint_auth_methods_supported': ['private_key_jwt']}, False),
+    ({'token_endpoint_auth_methods_supported': []}, False),
+    ({'token_endpoint_auth_methods_supported': 'none'}, False),
+    ({'token_endpoint_auth_methods_supported': [None, 'none']}, False),
+    ({'token_endpoint_auth_methods_supported': None}, False),
+    ({'token_endpoint_auth_methods_supported': ['client_secret_post']}, False),
+    ({'grant_types': ['client_credentials']}, False),
+    ({'grant_types': 'authorization_code'}, False),
+    ({'response_types': ['token']}, False),
+    ({'client_id': 'https://different.example/client.json'}, False),
+    ({'redirect_uris': ['https://example.test/callback#fragment']}, False),
+])
+def test_chatgpt_cimd_selects_only_explicit_public_client_support(monkeypatch, changes, accepted):
+    document = {**CHATGPT_METADATA, **changes}
+    real_client = httpx.AsyncClient
+
+    async def run():
+        async def resolve(*args, **kwargs):
+            return [(None, None, None, '', ('8.8.8.8', 443))]
+
+        response = httpx.Response(200, json=document)
+        monkeypatch.setattr(asyncio.get_running_loop(), 'getaddrinfo', resolve)
+        monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(
+                200, headers=response.headers, stream=httpx.ByteStream(response.content))), **kwargs))
+        client = await fetch_client_metadata(CHATGPT_METADATA['client_id'])
+        assert (client is not None) is accepted
+        if client:
+            assert client.token_endpoint_auth_method == 'none'
+            assert client.grant_types == ['authorization_code', 'refresh_token']
+            assert client.exact_redirect_uris == CHATGPT_METADATA['redirect_uris']
+
+    asyncio.run(run())
+
+
+def test_chatgpt_cimd_pkce_exchange_refresh_and_revocation(monkeypatch):
+    """Use the real metadata parser through the SDK's public HTTP routes."""
+    real_client = httpx.AsyncClient
+    response = httpx.Response(200, json=CHATGPT_METADATA)
+
+    def client_factory(**kwargs):
+        return real_client(transport=httpx.MockTransport(lambda request: httpx.Response(
+            200, headers=response.headers, stream=httpx.ByteStream(response.content))), **kwargs)
+
+    async def run():
+        async def resolve(*args, **kwargs):
+            return [(None, None, None, '', ('8.8.8.8', 443))]
+
+        monkeypatch.setattr(asyncio.get_running_loop(), 'getaddrinfo', resolve)
+        monkeypatch.setattr(httpx, 'AsyncClient', client_factory)
+        store = MemoryStore()
+        settings = ConnectorSettings(ORIGIN, 'https://edge.test', bytes(32), frozenset({'a'}))
+        oauth = AssignmentOAuthProvider(settings, store, lambda uid, aid: (uid, aid) == ('user', 'a'))
+        app = ConnectorHTTPGuard(build_student_server(ConnectorRuntime(settings, store, oauth, None)), ORIGIN)
+        client_id = CHATGPT_METADATA['client_id']
+        callback = CHATGPT_METADATA['redirect_uris'][0]
+        async with real_client(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as http:
+            params = {'client_id': client_id, 'redirect_uri': callback, 'response_type': 'code',
+                      'scope': 'assignments:read', 'resource': RESOURCE,
+                      'code_challenge': create_s256_code_challenge(VERIFIER), 'code_challenge_method': 'S256'}
+            assert (await http.get('/authorize', params={**params, 'redirect_uri': 'https://evil.test/callback'})).status_code == 400
+            consent = await http.get('/authorize', params=params)
+            assert consent.status_code == 302, consent.text
+            request_id = parse_qs(urlsplit(consent.headers['location']).query)['request'][0]
+            redirect = oauth.approve(request_id, 'user', 'a')
+            code = parse_qs(urlsplit(redirect).query)['code'][0]
+            form = {'grant_type': 'authorization_code', 'client_id': client_id, 'code': code,
+                    'redirect_uri': callback, 'code_verifier': VERIFIER, 'resource': RESOURCE}
+            assert (await http.post('/token', data={**form, 'code_verifier': 'z' * 43})).status_code == 400
+            tokens = await http.post('/token', data=form)
+            assert tokens.status_code == 200, tokens.text
+            assert (await http.post('/token', data=form)).status_code == 400
+            refresh = await http.post('/token', data={'grant_type': 'refresh_token', 'client_id': client_id,
+                'refresh_token': tokens.json()['refresh_token'], 'resource': RESOURCE})
+            assert refresh.status_code == 200, refresh.text
+            access = refresh.json()['access_token']
+            assert (await oauth.load_access_token(access)).claims['account_id'] == 'a'
+            revoked = await http.post('/revoke', data={'client_id': client_id, 'token': access})
+            assert revoked.status_code == 200, revoked.text
+            assert await oauth.load_access_token(access) is None
 
     asyncio.run(run())
