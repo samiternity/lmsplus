@@ -7,11 +7,40 @@ Handles notification creation, delivery, and management.
 """
 import json
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-from app.models.notification_models import Notification, NotificationType
+from app.models.notification_models import Notification, NotificationType, notification_preference_enabled
+
+
+@dataclass
+class ScheduledDiscordDelivery:
+    sent: int = 0
+    failed: bool = False
+
+
+_scheduled_discord_delivery = ContextVar('scheduled_discord_delivery', default=None)
+
+
+@contextmanager
+def track_scheduled_discord_delivery():
+    """Track confirmed bot DMs within one scheduler account check."""
+    delivery = ScheduledDiscordDelivery()
+    token = _scheduled_discord_delivery.set(delivery)
+    try:
+        yield delivery
+    finally:
+        _scheduled_discord_delivery.reset(token)
+
+
+def record_scheduled_notification_error():
+    delivery = _scheduled_discord_delivery.get()
+    if delivery is not None:
+        delivery.failed = True
 
 
 class NotificationService:
@@ -102,23 +131,25 @@ class NotificationService:
             data=data or {}
         )
         
-        from app.models.account import User
-        user = User.get(user_id)
-        
-        # Send Push Notification (only if send_push=True)
         if send_push:
-            # Discord DMs
+            from app.models.account import User
+
+            delivery = _scheduled_discord_delivery.get()
+            user = User.get(user_id, fresh=True) if delivery is not None else User.get(user_id)
+            discord_id = str(user.discord_id or '').strip() if user else ''
+            preferences = user.notification_preferences if user else None
             logger.debug("Discord notification requested for user %s", user_id)
-            if user and user.discord_id and user.notification_preferences and user.notification_preferences.get('discord_enabled'):
+            if (discord_id.lower() not in ('', 'none', 'null') and isinstance(preferences, dict)
+                    and notification_preference_enabled(preferences.get('discord_enabled'))):
                 try:
                     from app.services.discord_service import enqueue_discord_notification
                     logger.debug(f"[DEBUG DISCORD] Calling enqueue_discord_notification for {user.id}")
                     
                     # Determine embed color based on notification type and context
                     color = 0x8B5CF6 # Default Purple
-                    if notification_type.value == 'attendance':
+                    if notification.category == 'attendance':
                         color = 0x10B981 if 'Present' in title else 0xEF4444
-                    elif notification_type.value == 'assignment':
+                    elif notification.category == 'assignment':
                         color = 0xDC2626 if 'Overdue' in title else (0xF59E0B if 'Due' in title else 0x6366F1)
                         
                     # Extract fields from data dict if present
@@ -140,20 +171,27 @@ class NotificationService:
                         if 'url' in data:
                             url = data['url']
                             
-                    queued = enqueue_discord_notification(
-                        discord_id=user.discord_id,
+                    accepted = enqueue_discord_notification(
+                        discord_id=discord_id,
                         title=title,
                         description=message,
                         color=color,
                         url=url,
-                        fields=fields
+                        fields=fields,
+                        require_delivery=delivery is not None,
                     )
-                    if not queued:
+                    if not accepted:
+                        record_scheduled_notification_error()
                         return None
+                    if delivery is not None:
+                        delivery.sent += 1
                 except Exception as e:
+                    record_scheduled_notification_error()
                     logger.warning(f"Failed to enqueue Discord DM: {e}")
                     return None
             else:
+                if user is None:
+                    record_scheduled_notification_error()
                 return None
 
         return notification

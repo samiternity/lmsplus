@@ -194,53 +194,198 @@ class TestFirestoreLeakPatch(unittest.TestCase):
             self.assertEqual(_account_enrollment_cache.get("cms-acc-nested"), "02-000000-009")
             self.assertEqual(_account_enrollment_cache.get("user-custom-id"), "02-000000-009")
 
-    def test_daily_summary_slot_separation(self):
-        """Afternoon (14:00) and Evening (20:00) use separate Firestore documents and titles."""
-        mock_fs = MagicMock()
-        mock_db = MagicMock()
-        mock_fs.db = mock_db
-        mock_doc_ref = MagicMock()
-        mock_db.collection.return_value.document.return_value = mock_doc_ref
+    def test_minute_catch_up_then_hourly_fallback(self):
+        from copy import deepcopy
+        from flask import Flask
+        from google.cloud import firestore
+        from app.routes import scheduler as scheduler_routes
 
-        # Mock transaction
-        mock_transaction = MagicMock()
-        mock_db.transaction.return_value = mock_transaction
+        app = Flask(__name__)
+        app.register_blueprint(scheduler_routes.scheduler_bp)
+        scheduler = app.notification_scheduler = NotificationScheduler(app)
+        firestore_service = MagicMock()
+        scheduler._get_firestore = MagicMock(return_value=firestore_service)
+        scheduler.get_kill_switch_status = MagicMock(return_value={'active': False})
+        scheduler._log_free_tier_usage = MagicMock()
+        documents = {}
 
-        tz_pk = pytz.timezone('Asia/Karachi')
-        fake_afternoon = datetime(2026, 10, 17, 14, 59, 0, tzinfo=tz_pk)
-        fake_evening = datetime(2026, 10, 17, 20, 59, 0, tzinfo=tz_pk)
+        def document_ref(name):
+            document = MagicMock()
+            document.key = name
 
-        scheduler = NotificationScheduler(app=None)
-        scheduler._get_firestore = MagicMock(return_value=mock_fs)
+            def get_snapshot(**kwargs):
+                data = documents.get(name)
+                return MagicMock(exists=data is not None, to_dict=lambda: deepcopy(data))
 
-        with patch('app.services.notification_scheduler.get_current_pakistan_time', return_value=fake_afternoon), \
-             patch.object(scheduler, '_fire_daily_summary_webhook') as mock_fire:
-            
-            # Simulate transactional callback executing
-            def mock_transactional_decorator(fn):
-                def wrapper(t, ref):
-                    # Simulate doc.get inside transaction
-                    mock_snap = MagicMock()
-                    mock_snap.exists = True
-                    mock_snap.to_dict.return_value = {'date': '2026-10-17', 'summary_sent': False}
-                    t.get.return_value = mock_snap
-                    return fn(t, ref)
-                return wrapper
+            document.get.side_effect = get_snapshot
+            return document
 
-            with patch('google.cloud.firestore.transactional', side_effect=mock_transactional_decorator):
-                scheduler._aggregate_and_fire_daily_summary(59, {'users_processed': 10})
-                mock_db.collection.return_value.document.assert_called_with('daily_discord_stats_afternoon')
-                mock_fire.assert_called_once()
-                self.assertIn("Afternoon", mock_fire.call_args[1].get('slot_title', ''))
+        def update_document(ref, fields):
+            for key, value in fields.items():
+                if value is firestore.DELETE_FIELD:
+                    documents[ref.key].pop(key, None)
+                else:
+                    documents[ref.key][key] = value
 
-        with patch('app.services.notification_scheduler.get_current_pakistan_time', return_value=fake_evening), \
-             patch.object(scheduler, '_fire_daily_summary_webhook') as mock_fire:
+        firestore_service.db.collection.return_value.document.side_effect = document_ref
+        transaction = firestore_service.db.transaction.return_value
+        transaction.set.side_effect = lambda ref, data: documents.update({ref.key: deepcopy(data)})
+        transaction.update.side_effect = update_document
+        client = app.test_client()
 
-            with patch('google.cloud.firestore.transactional', side_effect=mock_transactional_decorator):
-                scheduler._aggregate_and_fire_daily_summary(59, {'users_processed': 10})
-                mock_db.collection.return_value.document.assert_called_with('daily_discord_stats_evening')
-                mock_fire.assert_called_once()
-                self.assertIn("Evening", mock_fire.call_args[1].get('slot_title', ''))
+        completed_batch = {
+            'users_processed': 3, 'confirmed_discord_dms': 2, 'notifications_sent': 2,
+        }
+        documents['daily_discord_stats_afternoon'] = {
+            'date': '2026-11-20',
+            'stats_by_bucket': {str(i): completed_batch for i in range(59)},
+        }
+        missed = {21, 23, 38, 59}
+        documents['daily_discord_stats_evening'] = {
+            'date': '2026-11-20',
+            'stats_by_bucket': {str(i): completed_batch for i in range(60) if i not in missed},
+            'batch_claims': {'59': {'id': 'in-flight', 'expires_at': float('inf')}},
+        }
+
+        retries = []
+
+        def process_batch(bucket, **kwargs):
+            # Simulate the original Scheduler request arriving while catch-up holds this lease.
+            if bucket == 21:
+                retries.append(post('/api/internal/run-notifications', '2026-11-20T15:21:00Z').json)
+            return completed_batch.copy()
+
+        def post(path, scheduled_time, *, actual_time=None):
+            actual = datetime.fromisoformat(actual_time or scheduled_time).astimezone(
+                pytz.timezone('Asia/Karachi'),
+            )
+            with patch('app.services.notification_scheduler._pakistan_wall_time', return_value=actual):
+                return client.post(path, headers={
+                    'Authorization': 'Bearer test-secret',
+                    'X-CloudScheduler-ScheduleTime': scheduled_time,
+                })
+
+        with (
+            patch('google.cloud.firestore.transactional', side_effect=lambda fn: fn),
+            patch.object(scheduler_routes, '_SECRET', 'test-secret'),
+            patch.object(scheduler, '_run_notifications', side_effect=process_batch) as run_batch,
+            patch('app.services.discord_service.enqueue_webhook_log', side_effect=[True, True, False, True]) as webhook,
+            patch('app.services.background_notification_service.check_cached_urgent_assignments_only',
+                  return_value='checked') as reminders,
+        ):
+            self.assertEqual(post('/api/internal/run-notifications', '2026-11-20T09:59:00Z').status_code, 200)
+            webhook.assert_not_called()
+            afternoon = post('/api/internal/urgent-check', '2026-11-20T10:00:00Z')
+            self.assertEqual(afternoon.json['summary'], 'Success: checked')
+            self.assertEqual(webhook.call_count, 1)
+            self.assertTrue(webhook.call_args.kwargs['title'].endswith('Summary'))
+            self.assertIn('Afternoon', webhook.call_args.kwargs['title'])
+
+            post('/api/internal/urgent-check', '2026-11-20T16:00:00Z')
+            self.assertEqual(webhook.call_count, 2)
+            self.assertTrue(webhook.call_args.kwargs['title'].endswith('Progress'))
+            self.assertIn('9:01 PM PKT', webhook.call_args.kwargs['description'])
+            fields = {field['name']: field['value'] for field in webhook.call_args.kwargs['fields']}
+            self.assertEqual(fields['Completed Batches'], '56 / 60')
+            self.assertEqual(fields['Pending Batches'], '4')
+            self.assertEqual(fields['Batches In Progress'], '1')
+            self.assertTrue(documents['daily_discord_stats_evening']['progress_summary_sent'])
+            self.assertEqual(reminders.call_args.kwargs['completed_buckets'], set(range(60)) - missed)
+            self.assertEqual(run_batch.call_count, 1)
+
+            for minute in range(4):
+                response = post('/api/internal/run-notifications', f'2026-11-20T16:{minute:02d}:00Z')
+                self.assertEqual(response.json['summary']['mode'], 'catch_up')
+            self.assertEqual(retries[0]['summary']['status'], 'already_claimed')
+            self.assertEqual(
+                [call.kwargs['bucket'] for call in run_batch.call_args_list], [59, 21, 38, 23],
+            )
+            self.assertEqual(len(documents['daily_discord_stats_evening']['stats_by_bucket']), 59)
+            self.assertEqual(webhook.call_count, 2)
+
+            documents['daily_discord_stats_evening']['batch_claims']['59']['expires_at'] = 0
+            post('/api/internal/run-notifications', '2026-11-20T16:04:00Z')
+            self.assertEqual(webhook.call_count, 3)
+            self.assertFalse(documents['daily_discord_stats_evening']['summary_sent'])
+            self.assertEqual(run_batch.call_args.kwargs['bucket'], 59)
+
+            post('/api/internal/run-notifications', '2026-11-20T16:05:00Z')
+            self.assertEqual(webhook.call_count, 4)
+            self.assertTrue(documents['daily_discord_stats_evening']['summary_sent'])
+            self.assertIn('Evening', webhook.call_args.kwargs['title'])
+            fields = {field['name']: field['value'] for field in webhook.call_args.kwargs['fields']}
+            self.assertEqual(fields['Completed Batches'], '60 / 60')
+            self.assertEqual(fields['Users Evaluated'], '180')
+            self.assertEqual(fields['Notifications Sent'], '120')
+
+            firestore_calls = scheduler._get_firestore.call_count
+            closed = post('/api/internal/run-notifications', '2026-11-20T16:10:00Z')
+            self.assertEqual(closed.json['summary']['status'], 'window_closed')
+            self.assertEqual(scheduler._get_firestore.call_count, firestore_calls)
+
+            late = post('/api/internal/run-notifications', '2026-11-20T16:09:00Z',
+                        actual_time='2026-11-20T16:10:00Z')
+            self.assertEqual(late.json['summary']['status'], 'window_closed')
+            stale = post('/api/internal/run-notifications', '2026-11-20T15:59:00Z',
+                         actual_time='2026-11-21T15:59:00Z')
+            self.assertEqual(stale.json['summary']['status'], 'expired')
+            past_catch_up = post('/api/internal/run-notifications', '2026-11-20T15:59:00Z',
+                                 actual_time='2026-11-20T16:10:00Z')
+            self.assertEqual(past_catch_up.json['summary']['status'], 'expired')
+            invalid = post('/api/internal/run-notifications?bucket=abc', '2026-11-20T15:59:00Z')
+            self.assertEqual(invalid.status_code, 400)
+            self.assertEqual(scheduler._get_firestore.call_count, firestore_calls)
+
+            duplicate = post('/api/internal/run-notifications', '2026-11-20T15:59:00Z')
+            self.assertEqual(duplicate.json['summary']['status'], 'already_claimed')
+            self.assertEqual(run_batch.call_count, 5)
+            self.assertEqual(webhook.call_count, 4)
+            self.assertEqual(reminders.call_count, 2)
+
+            # A failed batch stays retryable and the last hourly report marks the gap.
+            webhook.reset_mock(side_effect=True, return_value=True)
+            webhook.return_value = True
+            run_batch.reset_mock()
+            run_batch.side_effect = lambda **kwargs: {'error': 'Firestore unavailable'}
+            documents['daily_discord_stats_evening'] = {
+                'date': '2026-11-21',
+                'stats_by_bucket': {str(i): completed_batch for i in range(60) if i != 21},
+            }
+            with (
+                app.test_request_context(headers={'X-CloudScheduler-ScheduleTime': '2026-11-21T17:00:00Z'}),
+                patch('app.services.notification_scheduler._pakistan_wall_time',
+                      return_value=datetime.fromisoformat('2026-11-21T22:00:00+05:00')),
+            ):
+                scheduler._recover_daily_batches(deadline=0)
+            run_batch.assert_not_called()
+            webhook.assert_not_called()
+
+            failed = post('/api/internal/run-notifications', '2026-11-21T15:21:00Z')
+            self.assertEqual(failed.status_code, 503)
+            post('/api/internal/run-notifications', '2026-11-21T16:09:00Z')
+            self.assertEqual(webhook.call_count, 1)
+            self.assertIn('10:00 PM PKT', webhook.call_args.kwargs['description'])
+            post('/api/internal/urgent-check', '2026-11-21T17:00:00Z')
+            self.assertEqual(webhook.call_count, 1)
+            post('/api/internal/urgent-check', '2026-11-21T18:00:00Z')
+            self.assertEqual(run_batch.call_count, 4)
+            self.assertEqual(webhook.call_count, 2)
+            fields = {field['name']: field['value'] for field in webhook.call_args.kwargs['fields']}
+            self.assertEqual(fields['Completed Batches'], '59 / 60')
+            self.assertEqual(fields['Missing Batches'], '21')
+
+            # The original final batch can finish after the window closes.
+            webhook.reset_mock()
+            run_batch.side_effect = process_batch
+            documents['daily_discord_stats_afternoon'] = {
+                'date': '2026-11-22',
+                'stats_by_bucket': {str(i): completed_batch for i in range(59)},
+            }
+            response = post('/api/internal/run-notifications', '2026-11-22T09:59:00Z',
+                            actual_time='2026-11-22T10:01:00Z')
+            self.assertEqual(response.status_code, 200)
+            webhook.assert_called_once()
+            self.assertTrue(documents['daily_discord_stats_afternoon']['summary_sent'])
 
     def test_get_users_by_batch_casts_string_to_int(self):
         """String batch numbers (e.g. '20') must be cast to integer 20 for Firestore queries."""
@@ -255,6 +400,35 @@ class TestFirestoreLeakPatch(unittest.TestCase):
             User.get_users_by_batch("25")
             # Must query Firestore with integer 25, not string '25'
             mock_collection.where.assert_called_with('batch_bucket', '==', 25)
+            mock_collection.where.return_value.stream.side_effect = RuntimeError('Firestore unavailable')
+            with self.assertRaisesRegex(RuntimeError, 'Firestore unavailable'):
+                User.get_users_by_batch(25)
+
+    def test_scheduler_accumulates_usage_from_multiple_runs(self):
+        from copy import deepcopy
+        from app.services.notification_scheduler import FREE_TIER_HARD_STOP_SECONDS
+
+        scheduler = NotificationScheduler()
+        fs = MagicMock()
+        doc_ref = fs.db.collection.return_value.document.return_value
+        transaction = fs.db.transaction.return_value
+        stored = {}
+        doc_ref.get.side_effect = lambda **kwargs: MagicMock(
+            exists=bool(stored), to_dict=lambda: deepcopy(stored),
+        )
+        transaction.set.side_effect = lambda ref, data: stored.update(deepcopy(data))
+        fs.get_document.side_effect = lambda *args, **kwargs: deepcopy(stored)
+
+        with patch.object(scheduler, '_get_firestore', return_value=fs), \
+             patch('google.cloud.firestore.transactional', side_effect=lambda fn: fn):
+            scheduler._log_free_tier_usage(FREE_TIER_HARD_STOP_SECONDS - 1)
+            self.assertFalse(scheduler.get_kill_switch_status()['active'])
+            scheduler._log_free_tier_usage(2)
+            self.assertEqual(scheduler.get_kill_switch_status(), {
+                'active': True, 'usage_seconds': FREE_TIER_HARD_STOP_SECONDS + 1,
+            })
+        fs.get_document.assert_called_with('system_config', 'usage_stats', bypass_cache=True)
+        self.assertEqual(next(iter(stored.values()))['batch_runs'], 2)
 
     def test_run_notifications_empty_batch_skips_usage_log(self):
         """When batch has 0 users, it returns immediately without writing to usage_stats."""

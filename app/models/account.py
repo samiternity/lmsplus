@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet
 import base64
 import hashlib
 from .lms_models import LMSCredentials
+from .notification_models import notification_preference_enabled
 
 class AccountManager:
     def __init__(self):
@@ -796,8 +797,7 @@ class User(UserMixin):
         if not isinstance(prefs, dict):
             return False
 
-        discord_enabled = prefs.get('discord_enabled')
-        if not (discord_enabled is True or str(discord_enabled).lower() == 'true'):
+        if not notification_preference_enabled(prefs.get('discord_enabled')):
             return False
 
         alert_keys = (
@@ -808,7 +808,7 @@ class User(UserMixin):
             'due_3d',
             'overdue_warning'
         )
-        return any(prefs.get(k) is True or str(prefs.get(k)).lower() == 'true' for k in alert_keys)
+        return any(notification_preference_enabled(prefs.get(k)) for k in alert_keys)
 
     def to_dict(self):
         """Convert user to dictionary for storage"""
@@ -1116,7 +1116,7 @@ class User(UserMixin):
             return [u for u in users if u.batch_bucket == batch_num]
         except Exception as e:
             logger.warning(f"Error getting users by batch {batch_number}: {e}")
-            return []
+            raise
 
     @staticmethod
     def get_by_account_id(account_id: str):

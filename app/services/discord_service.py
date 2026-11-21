@@ -3,6 +3,7 @@ import requests
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,8 @@ class DiscordService:
         try:
             response = requests.post(url, headers=self.headers, json=data, timeout=10)
             response.raise_for_status()
-            return response.json().get('id')
+            channel = response.json()
+            return channel.get('id') if isinstance(channel, dict) else None
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to create Discord DM channel for {discord_id}: {e}")
             if hasattr(e.response, 'text'):
@@ -80,7 +82,11 @@ class DiscordService:
                 response.raise_for_status()
 
             response.raise_for_status()
-            return True
+            message = response.json()
+            if isinstance(message, dict) and message.get('id'):
+                return True
+            logger.warning("Discord did not return a created message ID")
+            return False
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send Discord message to channel {channel_id}: {e}")
             if hasattr(e, 'response') and e.response is not None:
@@ -90,11 +96,12 @@ class DiscordService:
 def get_discord_service():
     return DiscordService()
 
-def enqueue_discord_notification(discord_id: str, title: str, description: str, color: int = 0x5865F2, url: str = None, fields: list = None):
+def enqueue_discord_notification(discord_id: str, title: str, description: str, color: int = 0x5865F2,
+                                 url: str = None, fields: list = None, *, require_delivery: bool = False):
     """
     Queue a Discord notification.
     Attempts to use Google Cloud Tasks for robust rate limiting (max 4/sec).
-    Falls back to synchronous delivery so request completion cannot interrupt DMs.
+    Sends synchronously when the caller needs confirmation or queueing is unavailable.
     """
     if not get_discord_service().is_configured():
         logger.warning("Cannot deliver Discord notification: missing bot token")
@@ -116,7 +123,7 @@ def enqueue_discord_notification(discord_id: str, title: str, description: str, 
 
     worker_url = os.environ.get('WORKER_URL')
     scheduler_secret = os.environ.get('SCHEDULER_SECRET')
-    if not (worker_url and project_id and scheduler_secret):
+    if require_delivery or not (worker_url and project_id and scheduler_secret):
         # Finish delivery before Cloud Run can suspend CPU after the response.
         return _process_discord_notification_sync(payload)
 
@@ -178,7 +185,8 @@ def _process_discord_notification_sync(payload: dict):
         )
     return False
 
-def send_webhook_message(webhook_url: str, title: str, color: int = 0x5865F2, fields: list = None, description: str = None, footer: str = None):
+def send_webhook_message(webhook_url: str, title: str, color: int = 0x5865F2, fields: list = None,
+                         description: str = None, footer: str = None, *, require_delivery: bool = False):
     """Synchronously send a webhook message to Discord."""
     if not webhook_url:
         return False
@@ -196,8 +204,15 @@ def send_webhook_message(webhook_url: str, title: str, color: int = 0x5865F2, fi
 
     data = {'embeds': [embed]}
     try:
+        if require_delivery:
+            parts = urlsplit(webhook_url)
+            query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != 'wait']
+            webhook_url = parts._replace(query=urlencode([*query, ('wait', 'true')])).geturl()
         response = requests.post(webhook_url, json=data, timeout=10)
         response.raise_for_status()
+        if require_delivery:
+            message = response.json()
+            return isinstance(message, dict) and bool(message.get('id'))
         return True
     except Exception as e:
         logger.error("Failed to send Discord webhook (%s)", type(e).__name__)
@@ -210,7 +225,8 @@ def enqueue_webhook_log(title: str, color: int = 0x5865F2, fields: list = None, 
         return False
 
     if sync:
-        return send_webhook_message(webhook_url, title, color, fields, description, footer)
+        return send_webhook_message(webhook_url, title, color, fields, description, footer,
+                                    require_delivery=True)
     else:
         _local_executor.submit(send_webhook_message, webhook_url, title, color, fields, description, footer)
         return True

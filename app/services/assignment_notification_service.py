@@ -9,8 +9,8 @@ from typing import List, Dict, Optional, Any
 import logging
 from copy import deepcopy
 
-from app.services.notification_service import get_notification_service
-from app.models.notification_models import NotificationType
+from app.services.notification_service import get_notification_service, record_scheduled_notification_error
+from app.models.notification_models import NotificationType, notification_preference_enabled
 from app.utils.assignment_categorization import submission_cutoff
 from app.utils.assignment_identity import (
     assignment_title_identity, identity_index, migrate_tracking, normalize_label,
@@ -36,7 +36,7 @@ class AssignmentNotificationService:
         """Load previously tracked assignments for an account"""
         try:
             from app.utils.data_manager import data_manager
-            unified = data_manager.get_unified_dashboard(account_id) or {}
+            unified = data_manager.get_unified_dashboard(account_id, bypass_cache=True) or {}
             return unified.get('assignment_tracking_v2') or unified.get(
                 'assignment_tracking', {'known_assignments': [], 'notified_deadlines': {}})
         except Exception as e:
@@ -379,6 +379,7 @@ class AssignmentNotificationService:
                                     self._update_notification_tracking(deadline_key, notified_deadlines, now)
                 
             except Exception as e:
+                record_scheduled_notification_error()
                 logger.error(f"Error processing assignment notification: {e}")
                 continue
         
@@ -407,6 +408,7 @@ class AssignmentNotificationService:
                 return None
             return submission_cutoff(deadline_str)
         except Exception as e:
+            record_scheduled_notification_error()
             logger.error(f"Error parsing deadline: {e}")
             return None
     
@@ -417,7 +419,7 @@ class AssignmentNotificationService:
         prefs = user.notification_preferences
         if not prefs:
             return True
-        return prefs.get(notification_type, True)  # Default True — opt-out model
+        return notification_preference_enabled(prefs.get(notification_type, True))  # Legacy opt-out default
     
     def cleanup_old_tracking(self, account_id: str, days: int = 30) -> int:
         """Clean up old notification tracking data"""

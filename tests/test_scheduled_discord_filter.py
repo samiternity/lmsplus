@@ -111,6 +111,24 @@ class TestUserScheduledCheckEligibility:
 class TestSchedulerFiltering:
     """Test scheduler micro-batch execution skips ineligible users"""
 
+    def test_configured_scheduler_does_not_fall_back_to_local_users_when_firestore_is_down(self):
+        from datetime import datetime
+        from types import SimpleNamespace
+
+        scheduler = NotificationScheduler()
+        scheduled_time = datetime.fromisoformat('2026-11-21T20:01:00+05:00')
+        with (
+            patch.object(scheduler, '_get_firestore', return_value=None),
+            patch.object(scheduler, '_run_notifications') as run_batch,
+            patch('app.config.get_config', return_value=SimpleNamespace(use_firestore=True)),
+            patch('app.services.notification_scheduler.get_current_pakistan_time', return_value=scheduled_time),
+            patch('app.services.notification_scheduler._pakistan_wall_time', return_value=scheduled_time),
+        ):
+            assert scheduler.run_scheduled_notifications() == {
+                'error': 'Firestore unavailable for scheduled batches',
+            }
+            run_batch.assert_not_called()
+
     def test_run_notifications_skips_ineligible_users(self):
         scheduler = NotificationScheduler()
 
@@ -155,15 +173,95 @@ class TestSchedulerFiltering:
             assert summary['success_count'] == 1
             assert summary['skipped_count'] == 2
             assert summary['error_count'] == 0
-            assert summary['notifications_sent'] == 1
+            assert summary['notifications_sent'] == 0
 
             # Only u1 was scraped
             assert mock_process.call_count == 1
             mock_process.assert_called_once_with(user1, cms1)
 
+    @pytest.mark.parametrize("assignment_failed", [False, True])
+    def test_summary_counts_confirmed_dms_even_for_accounts_with_errors(self, tmp_path, assignment_failed):
+        from types import SimpleNamespace
+        from google.cloud import tasks_v2
+        import requests
+        from app.models.notification_models import NotificationType
+        from app.services.notification_service import NotificationService
+
+        scheduler = NotificationScheduler()
+        account = CMSAccount(account_id="acc1", cms_username="student", cms_password="test")
+        user = User(
+            id="u1", username="u1", email="u1@test.com",
+            cms_account=account, account_id="acc1", discord_id="123",
+            notification_preferences={'discord_enabled': True, 'absent_scheduled': True},
+        )
+        service = NotificationService(str(tmp_path))
+        dm_channel = Mock(status_code=200, **{'json.return_value': {'id': '456'}})
+        created_dm = Mock(status_code=200, **{'json.return_value': {'id': '789'}})
+        rejected_dm = Mock(status_code=403, **{
+            'raise_for_status.side_effect': requests.HTTPError('Discord rejected the DM'),
+        })
+        unconfirmed_dm = Mock(status_code=200, **{'json.return_value': {}})
+        dm_responses = [created_dm] if assignment_failed else [created_dm, rejected_dm, unconfirmed_dm]
+
+        def check_attendance(user, account):
+            for index in range(len(dm_responses)):
+                service.send_notification(user.id, NotificationType.ATTENDANCE_ABSENT_SCHEDULED,
+                                          f'Reminder {index}', 'Test reminder', send_push=True)
+            return 1, SimpleNamespace()
+
+        with (
+            patch.object(scheduler, 'get_kill_switch_status', return_value={'active': False}),
+            patch.object(scheduler, '_log_free_tier_usage'),
+            patch.object(scheduler, '_aggregate_and_fire_daily_summary') as aggregate,
+            patch.object(User, 'get_users_by_batch', return_value=[user]),
+            patch.object(User, 'get', return_value=user),
+            patch('app.services.background_notification_service._check_attendance', side_effect=check_attendance),
+            patch('app.services.background_notification_service._check_assignments', return_value=0,
+                  side_effect=RuntimeError('Assignment scrape failed') if assignment_failed else None),
+            patch.dict('os.environ', {'DISCORD_BOT_TOKEN': 'test-token', 'WORKER_URL': 'https://worker.example',
+                                     'FIREBASE_PROJECT_ID': 'test-project', 'SCHEDULER_SECRET': 'test-secret'}),
+            patch.object(tasks_v2, 'CloudTasksClient') as queue,
+            patch('app.services.discord_service.requests.post', side_effect=[
+                response for dm in dm_responses for response in (dm_channel, dm)
+            ]) as post,
+            patch('app.services.discord_service.enqueue_webhook_log', return_value=True) as webhook,
+        ):
+            summary = scheduler._run_notifications(bucket=58)
+            assert summary['error_count'] == 1
+            assert summary['success_count'] == 0
+            assert summary['notifications_sent'] == 1
+            assert post.call_count == 2 * len(dm_responses)
+            queue.assert_not_called()
+            aggregate.assert_called_once_with(58, summary)
+
+            stats_by_bucket = {
+                '57': {'confirmed_discord_dms': 2, 'error_count': 0},
+                '58': summary,
+            }
+            scheduler._fire_daily_summary_webhook({'stats_by_bucket': stats_by_bucket})
+            fields = {field['name']: field['value'] for field in webhook.call_args.kwargs['fields']}
+            assert fields['Notifications Sent'] == '3'
+            assert fields['Errors'] == '1'
+
+            stats_by_bucket['56'] = {'notifications_sent': 6}
+            scheduler._fire_daily_summary_webhook({'stats_by_bucket': stats_by_bucket})
+            fields = {field['name']: field['value'] for field in webhook.call_args.kwargs['fields']}
+            assert fields['Notifications Sent'] == '3 confirmed (older batches unverified)'
+
 
 class TestBackgroundServiceFiltering:
     """Test urgent check and run_all_notifications skip ineligible users"""
+
+    def test_hourly_urgent_check_defers_users_whose_batches_are_pending(self):
+        account = CMSAccount(account_id='acc1', cms_username='student', cms_password='test')
+        user = User(id='u1', username='u1', email='u1@test.com', cms_account=account,
+                    account_id='acc1', batch_bucket=21, discord_id='123',
+                    notification_preferences={'discord_enabled': True, 'due_24h': True})
+        with patch.object(User, 'list_all', return_value=[user]), \
+             patch('app.utils.data_manager.data_manager.get_unified_dashboard') as load_snapshot:
+            result = check_cached_urgent_assignments_only(completed_buckets={20})
+        assert 'deferred 1 users to batch catch-up' in result
+        load_snapshot.assert_not_called()
 
     def test_run_all_notifications_skips_ineligible(self):
         user_eligible = User(

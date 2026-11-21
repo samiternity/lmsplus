@@ -8,8 +8,8 @@ from app.utils.data_manager import data_manager
 from app.utils.session_auth import is_account_authenticated
 from app.services.attendance_change_tracker import AttendanceChangeTracker
 from app.services.attendance_updates_renderer import AttendanceUpdatesRenderer
-from app.services.notification_service import get_notification_service
-from app.models.notification_models import NotificationType
+from app.services.notification_service import get_notification_service, record_scheduled_notification_error
+from app.models.notification_models import NotificationType, notification_preference_enabled
 import requests
 from datetime import datetime, timedelta
 import random
@@ -54,7 +54,7 @@ def send_attendance_notifications(user_id: str, changes: list, user=None):
             
             # Check user preference before sending
             if user and hasattr(user, 'notification_preferences'):
-                if not user.notification_preferences.get(pref_key, False):
+                if not notification_preference_enabled((user.notification_preferences or {}).get(pref_key)):
                     continue  # User has disabled this notification type
             
             # Build a concise push notification
@@ -81,6 +81,7 @@ def send_attendance_notifications(user_id: str, changes: list, user=None):
                 result['sent'] += 1
 
         except Exception as e:
+            record_scheduled_notification_error()
             result['failed'].append(getattr(change, 'course_code', ''))
             logger.warning(f"Error sending attendance notifications: {e}")
 

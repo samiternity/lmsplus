@@ -12,6 +12,10 @@ from typing import Optional
 import uuid
 
 
+def notification_preference_enabled(value) -> bool:
+    return value is True or (isinstance(value, str) and value.strip().lower() == 'true')
+
+
 class NotificationType(Enum):
     """Types of notifications"""
     # Attendance notifications
