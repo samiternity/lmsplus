@@ -74,6 +74,32 @@ def test_unqueued_delivery_finishes_before_returning(delivered):
         send.assert_called_once()
 
 
+@pytest.mark.parametrize('message,delivered', [({'id': '123'}, True), ({}, False)])
+def test_summary_webhook_requires_discord_confirmation(message, delivered):
+    url = 'https://discord.example/webhook?thread_id=456&wait=false'
+    with patch.dict('os.environ', {'DISCORD_LOG_WEBHOOK_URL': url}), \
+         patch.object(discord_service.requests, 'post') as post:
+        post.return_value.json.return_value = message
+        assert discord_service.enqueue_webhook_log('Summary', sync=True) is delivered
+    assert post.call_args.args[0] == 'https://discord.example/webhook?thread_id=456&wait=true'
+
+
+def test_string_false_does_not_send_scheduled_discord_dm(tmp_path):
+    from app.services.notification_service import track_scheduled_discord_delivery
+
+    user = SimpleNamespace(discord_id='123', notification_preferences={'discord_enabled': 'false'})
+    service = NotificationService(str(tmp_path))
+    with track_scheduled_discord_delivery() as delivery, \
+         patch('app.models.account.User.get', return_value=user) as get_user, \
+         patch.object(discord_service, 'enqueue_discord_notification') as send:
+        assert service.send_notification('u1', NotificationType.ASSIGNMENT_DUE_24H,
+                                         'Due soon', 'Report', send_push=True) is None
+        get_user.assert_called_once_with('u1', fresh=True)
+        send.assert_not_called()
+        assert delivery.sent == 0
+        assert not delivery.failed
+
+
 def test_queue_uses_authentication_accepted_by_worker():
     from google.cloud import tasks_v2
     with patch.dict('os.environ', {'DISCORD_BOT_TOKEN': 'test', 'WORKER_URL': 'https://worker.example',

@@ -134,6 +134,7 @@ def _check_attendance(user, account) -> tuple[int, object]:
     from app.utils.enhanced_scraper import EnhancedCMSScraper
     from app.utils.data_manager import data_manager
     from app.services.attendance_change_tracker import AttendanceChangeTracker
+    from app.services.notification_service import record_scheduled_notification_error
     from app.routes.attendance import send_attendance_notifications
     from bs4 import BeautifulSoup
 
@@ -212,7 +213,9 @@ def _check_attendance(user, account) -> tuple[int, object]:
             'last_updated': datetime.utcnow().isoformat() + 'Z',
             'legacy_migrated': True
         }
-        data_manager.save_unified_dashboard(account.account_id, payload, merge=True)
+        if not data_manager.save_unified_dashboard(account.account_id, payload, merge=True):
+            record_scheduled_notification_error()
+            logger.warning("Failed to save initial attendance notification baseline")
         return 0, scraper.session
 
     from app.services.attendance_comparator import AttendanceComparator
@@ -220,6 +223,7 @@ def _check_attendance(user, account) -> tuple[int, object]:
     try:
         changes = comparator.compare_records(attendance_data, notification_baseline)
     except Exception as e:
+        record_scheduled_notification_error()
         logger.error(f"[{account.account_id}] Comparison failed: {e}")
         return 0, scraper.session
 
@@ -328,8 +332,8 @@ def _check_assignments(user, account, cms_session=None) -> int:
         logger.warning(f"[{account.account_id}] Notification engine failed: {e}", exc_info=True)
         raise
 
-def check_cached_urgent_assignments_only() -> str:
-    """Lightweight check to process cached urgent assignments only."""
+def check_cached_urgent_assignments_only(*, completed_buckets: set[int] | None = None) -> str:
+    """Check cached urgent assignments, deferring unfinished batches during catch-up."""
     from app.models.account import User
     from app.utils.data_manager import data_manager
     from app.services.assignment_notification_service import get_assignment_notification_service
@@ -345,6 +349,7 @@ def check_cached_urgent_assignments_only() -> str:
     total_urgent_pushed = 0
     total_users_evaluated = 0
     total_users_skipped = 0
+    total_users_deferred = 0
 
     for user in users:  # Iterate directly over user objects
         if not user or not user.cms_account:
@@ -352,6 +357,10 @@ def check_cached_urgent_assignments_only() -> str:
 
         if not user.is_scheduled_check_eligible():
             total_users_skipped += 1
+            continue
+
+        if completed_buckets is not None and user.batch_bucket not in completed_buckets:
+            total_users_deferred += 1
             continue
             
         try:
@@ -397,4 +406,7 @@ def check_cached_urgent_assignments_only() -> str:
         total_urgent_pushed += sum(counts.values()) if counts else 0
         logger.info(f"[{account_id}] Urgent check result: {counts}")
 
-    return f"Evaluated {total_users_evaluated} users, skipped {total_users_skipped} (no Discord/alerts), pushed {total_urgent_pushed} urgent notifications"
+    summary = f"Evaluated {total_users_evaluated} users, skipped {total_users_skipped} (no Discord/alerts), pushed {total_urgent_pushed} urgent notifications"
+    if total_users_deferred:
+        summary += f", deferred {total_users_deferred} users to batch catch-up"
+    return summary

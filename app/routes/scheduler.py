@@ -5,6 +5,7 @@ Protected by a shared secret so only the scheduler can trigger it.
 import os
 import logging
 from flask import Blueprint, request, jsonify
+from app.services.notification_scheduler import DAILY_BATCH_COUNT
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def _authorized(allow_worker_header: bool = False) -> bool:
 def run_notifications():
     """
     Trigger background notification checks for a specific micro-batch.
-    Called by Cloud Scheduler every minute from 8:00 PM to 8:59 PM.
+    Handles the regular batches and the minute-by-minute catch-up checks.
     """
     if not _authorized():
         return jsonify({'error': 'Unauthorized'}), 401
@@ -40,10 +41,14 @@ def run_notifications():
         
         # Optional: Allow passing a specific bucket, otherwise defaults to current minute
         bucket = request.args.get('bucket', type=int)
+        if 'bucket' in request.args and (bucket is None or not 0 <= bucket < DAILY_BATCH_COUNT):
+            return jsonify({'success': False, 'error': f'Batch number must be between 0 and {DAILY_BATCH_COUNT - 1}'}), 400
         
         if scheduler:
             # Synchronous execution
-            summary = scheduler._run_notifications(bucket=bucket)
+            summary = scheduler.run_scheduled_notifications(bucket=bucket)
+            if 'error' in summary and 'usage_seconds' not in summary:
+                return jsonify({'success': False, 'mode': 'micro_batch', 'summary': summary}), 503
             return jsonify({'success': True, 'mode': 'micro_batch', 'summary': summary})
         else:
             return jsonify({'success': False, 'error': 'Scheduler not initialized'}), 500

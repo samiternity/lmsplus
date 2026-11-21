@@ -75,6 +75,7 @@ class TestLMSDashboardAPIIntegration:
     def mock_user(self):
         """Create a mock user with active account"""
         user = Mock(spec=User)
+        user.id = 'test_user_123'
         user.user_id = 'test_user_123'
         user.is_authenticated = True
         user.is_active = True
